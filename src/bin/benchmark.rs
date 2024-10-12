@@ -2,6 +2,7 @@ use std::path::Path;
 use std::time::Instant;
 use random_access_string_compression::compressor::Compressor;
 use random_access_string_compression::compressor::lz4::LZ4Compressor;
+use random_access_string_compression::compressor::copy::CopyCompressor;
 use random_access_string_compression::dataset::{load_datasets, Dataset};
 use std::error::Error;
 use prettytable::{Table, row};
@@ -28,6 +29,7 @@ fn run_benchmark(datasets: &[Dataset]) -> Result<Vec<BenchmarkResult>, Box<dyn E
         let dataset_bytes: usize = dataset.data.iter().map(|s| s.len()).sum();
         let random_access_bytes: usize = dataset.queries.iter().map(|&i| dataset.data[i].len()).sum();
         let mut compressors: Vec<Box<dyn Compressor>> = vec![
+            Box::new(CopyCompressor::new()),  // Copy compressor
             Box::new(LZ4Compressor::new(64 * 1024)),  // LZ4 with 64KB blocks
         ];
 

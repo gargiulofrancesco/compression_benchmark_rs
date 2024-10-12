@@ -1,4 +1,5 @@
 pub mod lz4;
+pub mod copy;
 
 use std::error::Error;
 

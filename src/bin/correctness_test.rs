@@ -1,4 +1,5 @@
 use random_access_string_compression::compressor::lz4::LZ4Compressor;
+use random_access_string_compression::compressor::copy::CopyCompressor;
 use random_access_string_compression::dataset::{load_datasets, Dataset};
 use random_access_string_compression::compressor::Compressor;
 use std::error::Error;
@@ -15,6 +16,7 @@ pub fn test_compressors(datasets: &[Dataset]) -> Result<(), Box<dyn Error>> {
 
         // Initialize compressors
         let mut compressors: Vec<Box<dyn Compressor>> = vec![
+            Box::new(CopyCompressor::new()),  // Copy compressor
             Box::new(LZ4Compressor::new(64 * 1024)),  // LZ4 with 64 KB block size
         ];
 
