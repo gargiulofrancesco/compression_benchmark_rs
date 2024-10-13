@@ -106,9 +106,7 @@ fn print_benchmark_results(results: &[BenchmarkResult]) {
     }
     
     // Print the table
-    println!();
     table.printstd();
-    println!();
 }
 
 fn main () {
