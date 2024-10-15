@@ -66,9 +66,6 @@ fn main () {
     let mut results: Vec<BenchmarkResult> = Vec::new();
     for (i, dataset) in datasets.iter().enumerate() {
         println!("{}/{}) Processing dataset {}", i+1, datasets.len(), dataset.dataset_name);
-        if dataset.dataset_name == "goodreads_descriptions" {
-            continue;
-        }
 
         let (dataset_name, data, end_positions, _) = process_dataset(dataset);
         let mut tokenizer = Tokenizer::new(data.len(), end_positions.len());
@@ -76,5 +73,5 @@ fn main () {
         results.push(result);
     }
 
-    print_benchmark_results(&results);
+    print_benchmark_results(&results);    
 }
