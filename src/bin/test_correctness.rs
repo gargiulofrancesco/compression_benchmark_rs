@@ -1,56 +1,66 @@
 use random_access_string_compression::compressor::lz4::LZ4Compressor;
 use random_access_string_compression::compressor::copy::CopyCompressor;
-use random_access_string_compression::dataset::{load_datasets, Dataset};
+use random_access_string_compression::dataset::{load_datasets, process_dataset};
 use random_access_string_compression::compressor::Compressor;
-use std::error::Error;
 use std::path::Path;
 
-/// Test the compressor for correctness on each dataset
-///
-/// - Ensures that after compression and decompression, the data is unchanged.
-/// - Tests that random access works correctly by comparing with the original data.
-pub fn test_compressors(datasets: &[Dataset]) -> Result<(), Box<dyn Error>> {
-    // Iterate over each dataset
-    for dataset in datasets {
-        println!("Testing dataset: {}", dataset.dataset_name);
+pub fn test<T: Compressor>(compressor: &mut T, data: &[u8], end_positions: &[usize]) {
+    let mut buffer: Vec<u8> = Vec::with_capacity(data.len());  // Buffer for decompression
 
-        // Initialize compressors
-        let mut compressors: Vec<Box<dyn Compressor>> = vec![
-            Box::new(CopyCompressor::new()),  // Copy compressor
-            Box::new(LZ4Compressor::new(64 * 1024)),  // LZ4 with 64 KB block size
-        ];
-
-        // For each dataset, test each compressor
-        for compressor in compressors.iter_mut() {
-            let compressor_name = compressor.name().to_string();
-            println!("  Testing compressor: {}", compressor_name);
-
-            // === Compression and Decompression Test ===
-            compressor.compress(&dataset.data)?;  // Compress the dataset
-            let decompressed_data = compressor.decompress()?;  // Decompress the dataset
-            for i in 0..dataset.data.len() {
-                assert_eq!(dataset.data[i], decompressed_data[i], 
-                    "Decompressed data does not match original data at index {} for compressor: {}", i, compressor_name);
-            }
-
-            // === Random Access Test ===
-            for query in 0..dataset.data.len(){ // &dataset.queries {
-                let original_string = &dataset.data[query];  // The original string at this index
-                let accessed_string = compressor.get_string_at(query)?;  // The string obtained through random access
-
-                assert_eq!(original_string, &accessed_string, 
-                    "Random access at index {} failed for compressor: {}", query, compressor_name);
-            }
-        }
+    // === Compression and Decompression Test ===
+    compressor.compress(&data, &end_positions);  // Compress the dataset
+    compressor.decompress(&mut buffer);  // Decompress the dataset
+    for (i, byte) in buffer.iter().enumerate() {
+        assert_eq!(data[i], *byte, 
+            "Decompressed data does not match original data at index {} for compressor: {}", i, compressor.name());
     }
 
-    Ok(())
+    // === Random Access Test ===
+    for query in 0..end_positions.len(){ // &dataset.queries {
+        buffer.clear();  // Clear the buffer for random access decompression
+        compressor.get_item_at(query, &mut buffer);  // The item obtained through random access
+        let start = *end_positions.get(query-1).unwrap_or(&0);
+        for (i, byte) in buffer.iter().enumerate() {
+            assert_eq!(data[start + i], *byte, 
+                "Random access at index {} failed for compressor: {}", query, compressor.name());
+        }
+    }
+}
+
+enum CompressorEnum {
+    Copy(CopyCompressor),
+    LZ4(LZ4Compressor),
+}
+
+fn initialize_compressors(data_size: usize, n_elements: usize) -> Vec<CompressorEnum> {
+    vec![
+        CompressorEnum::Copy(CopyCompressor::new(data_size, n_elements)),
+        CompressorEnum::LZ4(LZ4Compressor::new(data_size, n_elements)),
+    ]
 }
 
 fn main () {
     let dir = Path::new("../../data/samples");
-    let datasets = load_datasets(dir).unwrap();
+    let datasets = load_datasets(dir);
 
     // Run the correctness tests on each dataset
-    test_compressors(&datasets).unwrap();
+    for dataset in datasets.iter() {
+        println!("Testing dataset: {}", dataset.dataset_name);
+
+        let (_, data, end_positions, _) = process_dataset(dataset);
+        let data_size = data.len();
+        
+        let mut compressors = initialize_compressors(data_size, end_positions.len());
+
+        for compressor_enum in &mut compressors {
+            match compressor_enum {
+                CompressorEnum::Copy(compressor) => {
+                    test(compressor, &data, &end_positions);
+                }
+                CompressorEnum::LZ4(compressor) => {
+                    test(compressor, &data, &end_positions);
+                }
+            }
+        }
+    }    
 }

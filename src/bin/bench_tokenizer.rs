@@ -1,8 +1,7 @@
 use std::path::Path;
 use std::time::Instant;
-use random_access_string_compression::dataset::{load_datasets, Dataset};
+use random_access_string_compression::dataset::{load_datasets, process_dataset};
 use random_access_string_compression::tokenizer::Tokenizer;
-use std::error::Error;
 use prettytable::{Table, row};
 
 /// Struct to hold the benchmark results
@@ -13,34 +12,22 @@ struct BenchmarkResult {
     tokenization_speed: f64,
 }
 
-fn run_benchmark(datasets: &[Dataset]) -> Result<Vec<BenchmarkResult>, Box<dyn Error>> {
-    let mut results: Vec<BenchmarkResult> = Vec::new();
+fn benchmark(tokenizer: &mut Tokenizer, dataset_name: String, data: &[u8], end_positions: &[usize]) -> BenchmarkResult {
+    let data_size = data.len() as f64;
+    let data_size_mb = data_size / (1024.0 * 1024.0);
 
-    // Iterate over each dataset
-    for (i, dataset) in datasets.iter().enumerate() {
-        println!("({}/{}) Running benchmarks for dataset: {}", i+1, datasets.len(), dataset.dataset_name);
-        
-        let mut tokenizer = Tokenizer::new(dataset.data.len());
-        let dataset_size: f64 = dataset.data.iter().map(|s| s.len()).sum::<usize>() as f64  / (1024.0 * 1024.0);
+    // === Compression Benchmark ===
+    let start_tokenization = Instant::now();
+    tokenizer.tokenize(data, end_positions);
+    let tokenization_time = start_tokenization.elapsed().as_secs_f64();
+    let tokenization_speed = data_size_mb / tokenization_time;
 
-        // === Compression Benchmark ===
-        let start_tokenization = Instant::now();
-        for s in dataset.data.iter() {
-            tokenizer.tokenize(s);
-        }
-        let tokenization_time = start_tokenization.elapsed().as_secs_f64();
-        let tokenization_speed = dataset_size / tokenization_time;
-
-        // Record the benchmark result for this dataset
-        results.push(BenchmarkResult {
-            dataset_name: dataset.dataset_name.to_string(),
-            dataset_size,
-            tokenization_time,
-            tokenization_speed,
-        });
+    BenchmarkResult {
+        dataset_name,
+        dataset_size: data_size_mb,
+        tokenization_time,
+        tokenization_speed,
     }
-
-    Ok(results)
 }
 
 /// Print benchmark results in a human-readable format
@@ -74,8 +61,20 @@ fn print_benchmark_results(results: &[BenchmarkResult]) {
 
 fn main () {
     let dir = Path::new("../../data/datasets");
-    let datasets = load_datasets(dir).unwrap();
+    let datasets = load_datasets(dir);
 
-    let benchmark_results = run_benchmark(&datasets).unwrap();
-    print_benchmark_results(&benchmark_results);
+    let mut results: Vec<BenchmarkResult> = Vec::new();
+    for (i, dataset) in datasets.iter().enumerate() {
+        println!("{}/{}) Processing dataset {}", i+1, datasets.len(), dataset.dataset_name);
+        if dataset.dataset_name == "goodreads_descriptions" {
+            continue;
+        }
+
+        let (dataset_name, data, end_positions, _) = process_dataset(dataset);
+        let mut tokenizer = Tokenizer::new(data.len(), end_positions.len());
+        let result = benchmark(&mut tokenizer, dataset_name, &data, &end_positions);
+        results.push(result);
+    }
+
+    print_benchmark_results(&results);
 }
