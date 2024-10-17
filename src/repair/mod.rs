@@ -104,44 +104,44 @@ impl<'a> RePair<'a> {
 
                 // Update (t0, t1) and (t0, next_id)                
                 if let Some(t0) = t0 {
-                        updated_pairs.insert((t0, t1));
-                        updated_pairs.insert((t0, next_id));
-                        // Update the pair (t0, t1)
-                        if let Some(pos_set) = self.pair_pos.get_mut(&(t0, t1)) {
-                            pos_set.remove(&(t0_pos.unwrap() as u32));
-                        }
-                        *self.pair_freq
-                            .get_mut(&(t0, t1))
-                            .unwrap() -= 1;
-                        // Update the pair (t0, next_id)
-                        self.pair_pos
-                            .entry((t0, next_id))
-                            .or_insert(HashSet::new())
-                            .insert(t0_pos.unwrap() as u32);
-                        *self.pair_freq
-                            .entry((t0, next_id))
-                            .or_insert(0) += 1;      
+                    updated_pairs.insert((t0, t1));
+                    updated_pairs.insert((t0, next_id));
+                    // Update the pair (t0, t1)
+                    if let Some(pos_set) = self.pair_pos.get_mut(&(t0, t1)) {
+                        pos_set.remove(&(t0_pos.unwrap() as u32));
+                    }
+                    *self.pair_freq
+                        .get_mut(&(t0, t1))
+                        .unwrap() -= 1;
+                    // Update the pair (t0, next_id)
+                    self.pair_pos
+                        .entry((t0, next_id))
+                        .or_insert(HashSet::new())
+                        .insert(t0_pos.unwrap() as u32);
+                    *self.pair_freq
+                        .entry((t0, next_id))
+                        .or_insert(0) += 1;      
                 }
 
                 // Update (t2, t3) and (next_id, t3)
                 if let Some(t3) = t3 {
-                        updated_pairs.insert((t2, t3));
-                        updated_pairs.insert((next_id, t3));
-                        // Update the pair (t2, t3)
-                        if let Some(pos_set) = self.pair_pos.get_mut(&(t2, t3)) {
-                            pos_set.remove(&(t2_pos as u32));
-                        }
-                        *self.pair_freq
-                            .get_mut(&(t2, t3))
-                            .unwrap() -= 1;
-                        // Update the pair (next_id, t3)
-                        self.pair_pos
-                            .entry((next_id, t3))
-                            .or_insert(HashSet::new())
-                            .insert(t1_pos as u32);
-                        *self.pair_freq
-                            .entry((next_id, t3))
-                            .or_insert(0) += 1;
+                    updated_pairs.insert((t2, t3));
+                    updated_pairs.insert((next_id, t3));
+                    // Update the pair (t2, t3)
+                    if let Some(pos_set) = self.pair_pos.get_mut(&(t2, t3)) {
+                        pos_set.remove(&(t2_pos as u32));
+                    }
+                    *self.pair_freq
+                        .get_mut(&(t2, t3))
+                        .unwrap() -= 1;
+                    // Update the pair (next_id, t3)
+                    self.pair_pos
+                        .entry((next_id, t3))
+                        .or_insert(HashSet::new())
+                        .insert(t1_pos as u32);
+                    *self.pair_freq
+                        .entry((next_id, t3))
+                        .or_insert(0) += 1;
                 }
 
                 // set t2_pos to 0 to merge t1 and t2

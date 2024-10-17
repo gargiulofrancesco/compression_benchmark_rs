@@ -1,5 +1,6 @@
 pub mod lz4;
 pub mod copy;
+pub mod bpe;
 
 pub trait Compressor {
     /// Creates a new compressor allocating memory for the specified data size and number of elements.
