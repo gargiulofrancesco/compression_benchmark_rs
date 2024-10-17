@@ -83,22 +83,4 @@ impl Tokenizer {
         self.bytes_to_token.insert(token.to_vec(), token_id);
         token_id
     }
-
-    pub fn get_dictionary(&self) -> Vec<&[u8]> {
-        std::iter::once(&0)
-            .chain(self.token_end_positions.iter())
-            .collect::<Vec<_>>()
-            .windows(2)
-            .map(|w| &self.token_to_bytes[*w[0]..*w[1]])
-            .collect()
-    }
-
-    pub fn get_tokens_frequencies(&self) -> FxHashMap<usize, usize> {
-        let mut token_frequencies: FxHashMap<usize, usize> = FxHashMap::default();
-        for &token in self.data.iter() {
-            let count = token_frequencies.entry(token).or_insert(0);
-            *count += 1;
-        }
-        token_frequencies
-    }
 }
