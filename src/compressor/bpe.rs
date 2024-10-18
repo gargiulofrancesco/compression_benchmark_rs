@@ -3,11 +3,10 @@ use crate::bit_vector::BitVector;
 use rustc_hash::{FxHashMap, FxHashSet};
 
 pub struct BPECompressor<'a> {
-    pub data: &'a [u8],
-    pub bv: BitVector,
-    pub pair_pos: FxHashMap<(u32, u32), FxHashSet<u32>>,    // (token1, token2) -> bv positions
-    pub pair_freq: FxHashMap<(u32, u32), u32>,              // (token1, token2) -> frequency
-    pub max_freq: BinaryHeap<(u32, (u32, u32))>,            // (frequency, (token1, token2))
+    data: &'a [u8],
+    bv: BitVector,
+    pair_pos: FxHashMap<(u32, u32), FxHashSet<u32>>,    // (token1, token2) -> bv positions
+    max_freq: BinaryHeap<(u32, (u32, u32))>,            // (frequency, (token1, token2))
     bytes_to_token: FxHashMap<Vec<u8>, u32>,
 }
 
@@ -22,13 +21,12 @@ impl<'a> BPECompressor<'a> {
                 data,
                 bv: BitVector::with_zeroes(data.len()),
                 pair_pos: FxHashMap::default(),
-                pair_freq: FxHashMap::default(),
                 max_freq: BinaryHeap::new(),
                 bytes_to_token,
         }
     }
 
-    pub fn tokenize(&mut self) {
+    pub fn tokenize_words(&mut self) {
         self.bv.set(0, true);
         let mut prev_not_alphanumeric = if self.data[0].is_ascii_alphanumeric() { false } else { true };
 
@@ -69,9 +67,9 @@ impl<'a> BPECompressor<'a> {
         t1 = self.get_or_insert_token(&self.data[t1_pos..]);
         self.insert_pair((t0, t1), t0_pos as u32);
 
-        // Insert pair_freq into max_freq
-        for (pair, freq) in self.pair_freq.iter() {
-            self.max_freq.push((*freq, *pair));
+        // Initialize max_freq heap
+        for (pair, pos) in self.pair_pos.iter() {
+            self.max_freq.push((pos.len() as u32, *pair));
         }
     }
 
@@ -97,13 +95,9 @@ impl<'a> BPECompressor<'a> {
             .entry((t1, t2))
             .or_insert(FxHashSet::default())
             .insert(pos);
-    
-        *self.pair_freq
-            .entry((t1, t2))
-            .or_insert(0) += 1;
     }
 
-    pub fn compress(&mut self, n_iterations: usize) {
+    pub fn merge(&mut self, n_iterations: usize) {
         for _ in 0..n_iterations {
             let next_id = self.bytes_to_token.len() as u32;
 
@@ -113,7 +107,7 @@ impl<'a> BPECompressor<'a> {
             // Get the pair with the maximum frequency
             let (_, (t1, t2)) = loop {
                 let (freq, (t1, t2)) = self.max_freq.pop().unwrap();
-                let current_freq = *self.pair_freq.get(&(t1, t2)).unwrap();
+                let current_freq = self.pair_pos.get(&(t1, t2)).unwrap().len() as u32;
                 
                 // Check if the frequency is up-to-date
                 if freq == current_freq {
@@ -131,7 +125,7 @@ impl<'a> BPECompressor<'a> {
             let slice_end = self.bv.next_one(temp).unwrap_or(self.bv.len());
             let new_bytes: Vec<u8> = (&self.data[slice_start..slice_end]).to_vec();
 
-            println!("{next_id}: \"{}\"", String::from_utf8_lossy(&new_bytes));
+            // println!("{next_id}: \"{}\"", String::from_utf8_lossy(&new_bytes));
 
             self.bytes_to_token.insert(new_bytes, next_id); 
 
@@ -168,9 +162,6 @@ impl<'a> BPECompressor<'a> {
                     if let Some(pos_set) = self.pair_pos.get_mut(&(t0, t1)) {
                         pos_set.remove(&(t0_pos.unwrap() as u32));
                     }
-                    *self.pair_freq
-                        .get_mut(&(t0, t1))
-                        .unwrap() -= 1;
                     // Update the pair (t0, next_id)
                     self.insert_pair((t0, next_id), t0_pos.unwrap() as u32);
                 }
@@ -183,9 +174,6 @@ impl<'a> BPECompressor<'a> {
                     if let Some(pos_set) = self.pair_pos.get_mut(&(t2, t3)) {
                         pos_set.remove(&(t2_pos as u32));
                     }
-                    *self.pair_freq
-                        .get_mut(&(t2, t3))
-                        .unwrap() -= 1;
                     // Update the pair (next_id, t3)
                     self.insert_pair((next_id, t3), t1_pos as u32);
                 }
@@ -193,14 +181,11 @@ impl<'a> BPECompressor<'a> {
                 // set t2_pos to 0 to merge t1 and t2
                 self.bv.set(t2_pos as usize, false);
             }
-    
-            // Remove the pair (t1, t2)
-            self.pair_freq.remove(&(t1, t2));
 
             // Update the max_freq heap with updated pairs
             for &(ti, tj) in updated_pairs.iter() {
                 if (ti, tj) != (t1, t2) {
-                    let freq = self.pair_freq.get(&(ti, tj)).copied().unwrap();
+                    let freq = self.pair_pos.get(&(ti, tj)).unwrap().len() as u32;
                     self.max_freq.push((freq, (ti, tj)));
                 }
             }
@@ -223,57 +208,4 @@ impl<'a> BPECompressor<'a> {
 
         result / n_tokens as f64
     }
-
-    /*
-    pub fn tokenize_and_initialize(&mut self) {
-        let mut start: Option<usize> = None;
-        let mut current_token_pos = 0;
-        let mut prev_token_id: Option<u32> = None;
-
-        for (i, &c) in self.data.iter().enumerate() {
-            if c.is_ascii_alphanumeric() {
-                if start.is_none() {
-                    start = Some(i);
-                }
-            }
-            else {
-                if let Some(start) = start.take() {
-                    // Process the current alphanumeric token
-                    let token = &self.data[start..i];
-                    let token_id = self.get_or_insert_token(token);
-                    self.bv.set(start, true);
-                    if let Some(prev_token_id) = prev_token_id {
-                        self.insert_pair((prev_token_id, token_id), current_token_pos);
-                    }
-                    prev_token_id = Some(token_id);
-                    current_token_pos = start as u32;
-                }
-                // Process the current non-alphanumeric character as its own token
-                self.bv.set(i, true);
-                // Update pair_pos and pair_freq
-                let next_token_id = c as u32;
-                if let Some(prev_token_id) = prev_token_id {
-                    self.insert_pair((prev_token_id, next_token_id), current_token_pos);
-                }
-                prev_token_id = Some(next_token_id);
-                current_token_pos = i as u32;
-            }
-        }
-
-        // Process the last token if necessary
-        if let Some(start) = start.take() {
-            let token = &self.data[start..];
-            let token_id = self.get_or_insert_token(token);
-            self.bv.set(start, true);
-            if let Some(prev_token_id) = prev_token_id {
-                self.insert_pair((prev_token_id, token_id), start as u32);
-            }
-        }
-
-        // Insert pair_freq into max_freq
-        for (pair, freq) in self.pair_freq.iter() {
-            self.max_freq.push((*freq, *pair));
-        }
-    }
-    */
 }
