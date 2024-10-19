@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use std::arch::x86_64::_popcnt64;
 
 #[derive(Default, Clone, Serialize, Deserialize, Eq, PartialEq)]
 pub struct BitVector {
@@ -147,5 +148,137 @@ impl BitVector {
     /// Returns the number of bits in the bitvector.
     pub fn len(&self) -> usize {
         self.position
+    }
+
+    pub fn ones(&self, pos: usize) -> UnaryIterOnes {
+        UnaryIterOnes::new(self, pos)
+    }
+
+    pub fn zeroes(&self, pos: usize) -> UnaryIterZeroes {
+        UnaryIterZeroes::new(self, pos)
+    }
+}
+
+// Iterator for enumerating bit positions
+pub struct UnaryIter<'a> {
+    bv: &'a BitVector,
+    pos: usize,
+    word_pos: usize,
+    buffer: u64,
+}
+
+impl<'a> UnaryIter<'a> {
+    // Creates the iterator from the given bit position
+    pub fn new(bv: &'a BitVector, pos: usize) -> UnaryIter {
+        let word_pos = pos >> 6;
+        let buffer = if word_pos < bv.data.len() {
+            bv.data[word_pos] >> (pos % 64)
+        } else {
+            0
+        };
+
+        UnaryIter {
+            bv,
+            pos,
+            word_pos,
+            buffer,
+        }
+    }
+
+    // iterates over positions of set bits
+    #[inline(always)]
+    pub fn next1(&mut self) -> Option<usize> {
+        while self.buffer == 0 {
+            self.pos += 64 - (self.pos % 64);
+            self.word_pos = self.pos >> 6;
+            if self.word_pos >= self.bv.data.len() {
+                return None;
+            }
+            self.buffer = self.bv.data[self.word_pos];
+        }
+        let pos_in_word: usize = self.buffer.trailing_zeros() as usize;
+        self.pos += pos_in_word + 1;
+        self.word_pos = self.pos >> 6;
+        self.buffer = if self.word_pos < self.bv.data.len() {
+            self.bv.data[self.word_pos] >> (self.pos % 64)
+        } else {
+            0
+        };
+        Some(self.pos - 1)
+    }
+
+    // iterates over positions of bits set to zero
+    #[inline(always)]
+    pub fn next0(&mut self) -> Option<usize> {
+        let mut buffer = !self.buffer;
+        loop {
+            let w;
+            unsafe {
+                w = _popcnt64(buffer as i64) as usize - (self.pos % 64);
+            }
+            if w != 0 {
+                break;
+            }
+            self.pos += 64 - (self.pos % 64);
+            self.word_pos = self.pos >> 6;
+            if self.word_pos >= self.bv.data.len() {
+                return None;
+            }
+            buffer = !self.bv.data[self.word_pos];
+        }
+        let pos_in_word: usize = buffer.trailing_zeros() as usize;
+        self.pos += pos_in_word + 1;
+        self.word_pos = self.pos >> 6;
+        self.buffer = if self.word_pos < self.bv.data.len() {
+            self.bv.data[self.word_pos] >> (self.pos % 64)
+        } else {
+            0
+        };
+
+        Some(self.pos - 1).filter(|&x| x < self.bv.position)
+    }
+    
+
+    #[inline(always)]
+    pub fn pos(&self) -> usize {
+        self.pos
+    }
+}
+
+pub struct UnaryIterOnes<'a> {
+    iter: UnaryIter<'a>,
+}
+impl<'a> UnaryIterOnes<'a> {
+    pub fn new(bv: &'a BitVector, pos: usize) -> UnaryIterOnes {
+        let iter = UnaryIter::new(bv, pos);
+        UnaryIterOnes { iter }
+    }
+}
+impl<'a> Iterator for UnaryIterOnes<'a> {
+    type Item = usize;
+
+    // iterates over positions of set bits
+    #[inline(always)]
+    fn next(&mut self) -> Option<usize> {
+        self.iter.next1()
+    }
+}
+
+pub struct UnaryIterZeroes<'a> {
+    iter: UnaryIter<'a>,
+}
+impl<'a> UnaryIterZeroes<'a> {
+    pub fn new(bv: &'a BitVector, pos: usize) -> UnaryIterZeroes {
+        let iter = UnaryIter::new(bv, pos);
+        UnaryIterZeroes { iter }
+    }
+}
+impl<'a> Iterator for UnaryIterZeroes<'a> {
+    type Item = usize;
+
+    // iterates over positions of set bits
+    #[inline(always)]
+    fn next(&mut self) -> Option<usize> {
+        self.iter.next0()
     }
 }
