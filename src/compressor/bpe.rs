@@ -71,6 +71,20 @@ impl<'a> BPECompressor<'a> {
             current_pos = next_pos;
             next_pos_opt = iter.next();
         }
+
+        // Add the last token
+        let slice = &self.data[current_pos..];
+        if slice.len() == 1 {
+            self.token_ids[current_pos] = slice[0] as u32;
+        }
+        else if let Some(&token_id) = map.get(slice) {
+            self.token_ids[current_pos] = token_id;
+        }
+        else {
+            map.insert(slice.to_vec(), self.next_id);
+            self.token_ids[current_pos] = self.next_id;
+            self.next_id += 1;
+        }
     }
 
     pub fn initialize_pair_positions(&mut self) {
