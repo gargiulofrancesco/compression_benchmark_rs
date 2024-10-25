@@ -1,8 +1,8 @@
 use crate::compressor::Compressor;
 
 pub struct CopyCompressor {
-    data: Vec<u8>,  // Store the "compressed" data as bytes
-    end_positions: Vec<usize>, // Store the end positions of each element
+    data: Vec<u8>,                  // Store the "compressed" data as bytes
+    end_positions: Vec<usize>,      // Store the end positions of each element
 }
 
 impl Compressor for CopyCompressor {

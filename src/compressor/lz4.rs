@@ -6,12 +6,12 @@ pub struct LZ4Compressor {
     block_size: usize,                      // Maximum size of each block (in bytes)
     data: Vec<u8>,                          // Store compressed blocks
     blocks_metadata: Vec<BlockMetadata>,    // Metadata for each block
-    item_end_positions: Vec<usize>,       // End positions of each item in the original data
+    item_end_positions: Vec<usize>,         // End positions of each item in the original data
 }
 
 pub struct BlockMetadata {
     pub end_position: usize,        // End position of this block in compressed data
-    pub num_items_psum: usize,    // Cumulative number of items up to this block
+    pub num_items_psum: usize,      // Cumulative number of items up to this block
     pub uncompressed_size: i32,     // Uncompressed size of this block
 }
 
@@ -43,7 +43,7 @@ impl Compressor for LZ4Compressor {
     }
 
     fn space_used_bytes(&self) -> usize {
-        self.data.len() + self.blocks_metadata.len() * (20)
+        self.data.len() + self.blocks_metadata.len() * (8 + 8 + 4)
     }
 
     fn name(&self) -> &str {

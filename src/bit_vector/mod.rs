@@ -91,6 +91,49 @@ impl BitVector {
     }
 
     #[inline(always)]
+    pub fn append_bits(&mut self, bits: u64, len: usize) {
+        assert!(len == 64 || (bits >> len) == 0);
+        assert!(len <= 64);
+        if len == 0 {
+            return;
+        }
+        let pos_in_word: usize = self.position & 63;
+        self.position += len;
+
+        if pos_in_word == 0 {
+            self.data.push(bits);
+        } else if let Some(last) = self.data.last_mut() {
+            *last |= bits << pos_in_word;
+            if len > 64 - pos_in_word {
+                self.data.push(bits >> (64 - pos_in_word));
+            }
+        }
+    }
+
+    #[inline(always)]
+    pub fn get_bits(&self, index: usize, len: usize) -> Option<u64> {
+        if (len > 64) | (index + len > self.position) {
+            return None;
+        }
+        if len == 0 {
+            return Some(0);
+        }
+        let block = index >> 6;
+        let shift = index & 63;
+
+        let mask = if len == 64 {
+            std::u64::MAX
+        } else {
+            (1_u64 << len) - 1
+        };
+
+        if shift + len <= 64 {
+            return Some(self.data[block] >> shift & mask);
+        }
+        Some((self.data[block] >> shift) | (self.data[block + 1] << (64 - shift) & mask))
+    }
+    
+    #[inline(always)]
     pub fn next_one(&self, pos: usize) -> Option<usize> {
         let mut next_pos = pos + 1;
         let mut word_pos = next_pos >> 6;

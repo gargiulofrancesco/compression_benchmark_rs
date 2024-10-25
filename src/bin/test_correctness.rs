@@ -1,7 +1,9 @@
+use random_access_string_compression::compressor::bpe::BPECompressor;
 use random_access_string_compression::compressor::lz4::LZ4Compressor;
 use random_access_string_compression::compressor::copy::CopyCompressor;
-use random_access_string_compression::dataset::{load_datasets, process_dataset};
+use random_access_string_compression::dataset::{process_dataset, Dataset};
 use random_access_string_compression::compressor::Compressor;
+use std::fs;
 use std::path::Path;
 
 pub fn test<T: Compressor>(compressor: &mut T, data: &[u8], end_positions: &[usize]) {
@@ -30,37 +32,49 @@ pub fn test<T: Compressor>(compressor: &mut T, data: &[u8], end_positions: &[usi
 enum CompressorEnum {
     Copy(CopyCompressor),
     LZ4(LZ4Compressor),
+    BPE(BPECompressor),
 }
 
 fn initialize_compressors(data_size: usize, n_elements: usize) -> Vec<CompressorEnum> {
     vec![
         CompressorEnum::Copy(CopyCompressor::new(data_size, n_elements)),
         CompressorEnum::LZ4(LZ4Compressor::new(data_size, n_elements)),
+        CompressorEnum::BPE(BPECompressor::new(data_size, n_elements)),
     ]
 }
 
-fn main () {
+fn main() {
     let dir = Path::new("../../data/samples");
-    let datasets = load_datasets(dir);
 
-    // Run the correctness tests on each dataset
-    for dataset in datasets.iter() {
-        println!("Testing dataset: {}", dataset.dataset_name);
-
-        let (_, data, end_positions, _) = process_dataset(dataset);
-        let data_size = data.len();
+    // Load all datasets from the specified directory
+    for entry in fs::read_dir(dir).unwrap() {
+        let entry = entry.unwrap();
+        let path = entry.path();
         
-        let mut compressors = initialize_compressors(data_size, end_positions.len());
+        // Check if the path is a file and has a .json extension
+        if path.is_file() && path.extension().map(|ext| ext == "json").unwrap_or(false) {
+            // Load the dataset from the JSON file
+            let dataset = Dataset::load(&path);            
+            println!("Testing dataset: {}", dataset.dataset_name);
 
-        for compressor_enum in &mut compressors {
-            match compressor_enum {
-                CompressorEnum::Copy(compressor) => {
-                    test(compressor, &data, &end_positions);
-                }
-                CompressorEnum::LZ4(compressor) => {
-                    test(compressor, &data, &end_positions);
+            let (_, data, end_positions, _) = process_dataset(&dataset);
+            let data_size = data.len();
+            
+            let mut compressors = initialize_compressors(data_size, end_positions.len());
+
+            for compressor_enum in &mut compressors {
+                match compressor_enum {
+                    CompressorEnum::Copy(compressor) => {
+                        test(compressor, &data, &end_positions);
+                    }
+                    CompressorEnum::LZ4(compressor) => {
+                        test(compressor, &data, &end_positions);
+                    }
+                    CompressorEnum::BPE(compressor) => {
+                        test(compressor, &data, &end_positions);
+                    }
                 }
             }
         }
-    }    
+    }
 }

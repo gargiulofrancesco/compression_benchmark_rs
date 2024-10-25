@@ -1,9 +1,11 @@
+use std::fs;
 use std::path::Path;
 use std::time::Instant;
+use random_access_string_compression::compressor::bpe::BPECompressor;
 use random_access_string_compression::{compressor::Compressor, dataset::process_dataset};
 use random_access_string_compression::compressor::lz4::LZ4Compressor;
 use random_access_string_compression::compressor::copy::CopyCompressor;
-use random_access_string_compression::dataset::load_datasets;
+use random_access_string_compression::dataset::Dataset;
 use prettytable::{Table, row};
 
 /// Struct to hold the benchmark results
@@ -102,34 +104,48 @@ fn print_benchmark_results(results: &[BenchmarkResult]) {
 enum CompressorEnum {
     Copy(CopyCompressor),
     LZ4(LZ4Compressor),
+    BPE(BPECompressor),
 }
 
 fn initialize_compressors(data_size: usize, n_elements: usize) -> Vec<CompressorEnum> {
     vec![
         CompressorEnum::Copy(CopyCompressor::new(data_size, n_elements)),
         CompressorEnum::LZ4(LZ4Compressor::new(data_size, n_elements)),
+        CompressorEnum::BPE(BPECompressor::new(data_size, n_elements)),
     ]
 }
 
 fn main() {
     let dir = Path::new("../../data/samples");
-    let datasets = load_datasets(dir);
-
     let mut results: Vec<BenchmarkResult> = Vec::new();
-    for (i, dataset) in datasets.iter().enumerate() {
-        println!("{}/{}) Benchmarking dataset: {}", i+1, datasets.len(), dataset.dataset_name);
 
-        let (dataset_name, data, end_positions, queries) = process_dataset(dataset);
-        let mut compressors = initialize_compressors(data.len(), end_positions.len());
-        for compressor_enum in &mut compressors {
-            match compressor_enum {
-                CompressorEnum::Copy(compressor) => {
-                    let result = benchmark(compressor, dataset_name.clone(), &data, &end_positions, &queries);
-                    results.push(result);
-                }
-                CompressorEnum::LZ4(compressor) => {
-                    let result = benchmark(compressor, dataset_name.clone(), &data, &end_positions, &queries);
-                    results.push(result);
+    // Load all datasets from the specified directory
+    for entry in fs::read_dir(dir).unwrap() {
+        let entry = entry.unwrap();
+        let path = entry.path();
+        
+        // Check if the path is a file and has a .json extension
+        if path.is_file() && path.extension().map(|ext| ext == "json").unwrap_or(false) {
+            // Load the dataset from the JSON file
+            let dataset = Dataset::load(&path);
+            println!("Benchmarking dataset: {}", dataset.dataset_name);
+            
+            let (dataset_name, data, end_positions, queries) = process_dataset(&dataset);
+            let mut compressors = initialize_compressors(data.len(), end_positions.len());
+            for compressor_enum in &mut compressors {
+                match compressor_enum {
+                    CompressorEnum::Copy(compressor) => {
+                        let result = benchmark(compressor, dataset_name.clone(), &data, &end_positions, &queries);
+                        results.push(result);
+                    }
+                    CompressorEnum::LZ4(compressor) => {
+                        let result = benchmark(compressor, dataset_name.clone(), &data, &end_positions, &queries);
+                        results.push(result);
+                    }
+                    CompressorEnum::BPE(compressor) => {
+                        let result = benchmark(compressor, dataset_name.clone(), &data, &end_positions, &queries);
+                        results.push(result);
+                    }
                 }
             }
         }
