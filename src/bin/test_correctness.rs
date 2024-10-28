@@ -18,7 +18,7 @@ pub fn test<T: Compressor>(compressor: &mut T, data: &[u8], end_positions: &[usi
     }
 
     // === Random Access Test ===
-    for query in 0..end_positions.len(){ // &dataset.queries {
+    for query in 0..end_positions.len() {
         buffer.clear();  // Clear the buffer for random access decompression
         compressor.get_item_at(query, &mut buffer);  // The item obtained through random access
         let start = *end_positions.get(query-1).unwrap_or(&0);
@@ -57,7 +57,7 @@ fn main() {
             let dataset = Dataset::load(&path);            
             println!("Testing dataset: {}", dataset.dataset_name);
 
-            let (_, data, end_positions, _) = process_dataset(&dataset);
+            let (_, data, end_positions) = process_dataset(&dataset);
             let data_size = data.len();
             
             let mut compressors = initialize_compressors(data_size, end_positions.len());

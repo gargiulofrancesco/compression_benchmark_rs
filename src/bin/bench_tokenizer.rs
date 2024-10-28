@@ -67,7 +67,7 @@ fn main () {
     for (i, dataset) in datasets.iter().enumerate() {
         println!("{}/{}) Processing dataset {}", i+1, datasets.len(), dataset.dataset_name);
 
-        let (dataset_name, data, end_positions, _) = process_dataset(dataset);
+        let (dataset_name, data, end_positions) = process_dataset(dataset);
         let mut tokenizer = Tokenizer::new(data.len(), end_positions.len());
         let result = benchmark(&mut tokenizer, dataset_name, &data, &end_positions);
         results.push(result);

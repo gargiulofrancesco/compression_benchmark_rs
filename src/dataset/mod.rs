@@ -2,23 +2,21 @@ use serde::{Serialize, Deserialize};
 use std::fs;
 use std::path::Path;
 
-/// Represents a single test case containing both data and queries.
+/// Represents a single dataset.
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Dataset {
     pub dataset_name: String,
     pub data: Vec<String>,
-    pub queries: Vec<usize>,
 }
 
 impl Dataset {
-    /// Loads a test case from a JSON file.
+    /// Loads a dataset from a JSON file.
     pub fn load<P: AsRef<Path>>(path: P) -> Self {
         let content = fs::read_to_string(path).unwrap();
         let mut dataset: Dataset = serde_json::from_str(&content).unwrap();
 
         dataset.dataset_name.shrink_to_fit();
         dataset.data.shrink_to_fit();
-        dataset.queries.shrink_to_fit();
         
         dataset
     }
@@ -45,9 +43,8 @@ pub fn load_datasets<P: AsRef<Path>>(dir: P) -> Vec<Dataset> {
 }
 
 /// Processes a dataset into a format that can be used by the compressors.
-pub fn process_dataset(dataset: &Dataset) -> (String, Vec<u8>, Vec<usize>, Vec<usize>) {
+pub fn process_dataset(dataset: &Dataset) -> (String, Vec<u8>, Vec<usize>) {
     let dataset_name = dataset.dataset_name.clone();
-    let queries = dataset.queries.clone();
     let data: Vec<u8> = dataset.data.iter().flat_map(|s| s.as_bytes()).copied().collect();
     let end_positions: Vec<usize> = dataset.data.iter()
         .scan(0, |state, s| {
@@ -56,5 +53,5 @@ pub fn process_dataset(dataset: &Dataset) -> (String, Vec<u8>, Vec<usize>, Vec<u
         })
         .collect();
 
-    (dataset_name, data, end_positions, queries)
+    (dataset_name, data, end_positions)
 }

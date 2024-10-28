@@ -7,6 +7,9 @@ use random_access_string_compression::compressor::lz4::LZ4Compressor;
 use random_access_string_compression::compressor::copy::CopyCompressor;
 use random_access_string_compression::dataset::Dataset;
 use prettytable::{Table, row};
+use rand::prelude::*;
+use rand::rngs::StdRng;
+use rand::SeedableRng;
 
 /// Struct to hold the benchmark results
 struct BenchmarkResult {
@@ -101,6 +104,25 @@ fn print_benchmark_results(results: &[BenchmarkResult]) {
     println!("Average Compression Speed: {:.2} MB/s, Average Decompression Speed: {:.2} MB/s", average_compression_speed, average_decompression_speed);
 }
 
+fn generate_queries(n_elements: usize, selectivity: f64, seed: u64) -> Vec<usize> {
+    assert!(selectivity >= 0.0 && selectivity <= 1.0);
+
+    let n_queries = (n_elements as f64 * selectivity) as usize;
+    let mut queries: Vec<usize> = (0..n_elements).collect();
+
+    // Initialize the seeded RNG
+    let mut rng = StdRng::seed_from_u64(seed);
+
+    // Shuffle and take the top `n_queries` elements
+    queries.shuffle(&mut rng);
+    queries.truncate(n_queries);
+
+    // Sort the indices to ensure they are in ascending order
+    queries.sort_unstable();
+
+    queries
+}
+
 enum CompressorEnum {
     Copy(CopyCompressor),
     LZ4(LZ4Compressor),
@@ -119,6 +141,9 @@ fn main() {
     let dir = Path::new("../../data/samples");
     let mut results: Vec<BenchmarkResult> = Vec::new();
 
+    let selectivity = 0.15;  // Selectivity of random access queries
+    let seed = 42;  // Seed for the random number generator
+
     // Load all datasets from the specified directory
     for entry in fs::read_dir(dir).unwrap() {
         let entry = entry.unwrap();
@@ -130,8 +155,10 @@ fn main() {
             let dataset = Dataset::load(&path);
             println!("Benchmarking dataset: {}", dataset.dataset_name);
             
-            let (dataset_name, data, end_positions, queries) = process_dataset(&dataset);
+            let (dataset_name, data, end_positions) = process_dataset(&dataset);
+            let queries = generate_queries(end_positions.len(), selectivity, seed);
             let mut compressors = initialize_compressors(data.len(), end_positions.len());
+
             for compressor_enum in &mut compressors {
                 match compressor_enum {
                     CompressorEnum::Copy(compressor) => {
