@@ -398,88 +398,35 @@ pub fn fibonacci_decode(index: usize, bitvector: &BitVector) -> Option<(u64, usi
     Some((n, curr_index - index))
 }
 
-/// Encodes a positive integer `n` using Variable Byte encoding and appends the result to a `BitVector`.
-///
-/// Variable Byte encoding is a compression technique used to encode positive integers. It represents an integer `n` 
-/// by dividing it into a sequence of bytes, where each byte represents 7 bits of the integer. The most significant bit
-/// of each byte is set to `0` except for the last byte, which has its most significant bit set to `1`. This allows for
-/// efficient storage of small integers while still supporting larger integers.
-/// 
-/// # Arguments
-///
-/// * `n` - The positive integer to be encoded.
-/// * `bitvector` - A mutable reference to a `BitVector` where the encoded bits will be appended.
-///
-/// # Examples
-///
-/// ```
-/// use pef::bitvector::*;
-/// use pef::entropy_encoding::*;
-///
-/// let mut bitvector = BitVector::new();
-/// variable_byte_encode(42, &mut bitvector);
-/// ```
-pub fn variable_byte_encode(n: u64, bitvector: &mut BitVector) {
-    let mut bytes: Vec<u8> = Vec::new();
-    let mut num = n;
-
-    while num >= 128 {
-        bytes.push((num & 0x7F) as u8);
-        num >>= 7;
-    }
-    bytes.push((num | 0x80) as u8);
-
-    for byte in bytes {
-        bitvector.append_bits(byte as u64, 8);
+pub fn variable_byte_encode(n: u16, bitvector: &mut BitVector) {
+    if n < 128 {
+        // 1-byte encoding with 7 bits for the value + 1 flag bit set to 0
+        bitvector.append_bits(n as u64, 8);
+    } else {
+        // 2-byte encoding
+        // First byte: set flag to 1 and take the lower 7 bits of n
+        let first_byte = ((n & 0x7F) | 0x80) as u64;
+        let second_byte = (n >> 7) as u64;
+        
+        // Append both bytes consecutively
+        bitvector.append_bits(first_byte, 8);
+        bitvector.append_bits(second_byte, 8);
     }
 }
 
-/// Decodes a Variable Byte encoded integer from a BitVector starting at a specified index.
-///
-/// This function decodes a Variable Byte encoded integer from the given BitVector starting at the specified index.
-/// The decoding process involves reading bytes from the BitVector and reconstructing the original integer by combining
-/// the 7 least significant bits of each byte. The most significant bit of each byte is used as a delimiter to determine
-/// the end of the encoded integer.
-///
-/// # Arguments
-///
-/// * `index` - The starting index in the BitVector from which to begin decoding.
-/// * `bitvector` - A reference to a BitVector containing the encoded data.
-///
-/// # Returns
-///
-/// Returns `Some((decoded_value, code_length))` if decoding is successful, where `decoded_value` is the decoded integer
-/// and `code_length` is the total length of the Variable Byte encoded integer in bits.
-/// Returns `None` if the index exceeds the length of the BitVector or if decoding fails.
-///
-/// # Examples
-///
-/// ```
-/// use pef::bitvector::*;
-/// use pef::entropy_encoding::*;
-///
-/// let mut bitvector: BitVector = BitVector::new();
-/// let n = 42;
-/// variable_byte_encode(n, &mut bitvector);
-/// assert_eq!(variable_byte_decode(0, &bitvector), Some((n, 8)));
-/// ```
-pub fn variable_byte_decode(index: usize, bitvector: &BitVector) -> Option<(u64, usize)> {
-    let mut curr_index = index;
-    let mut n: u64 = 0;
-    let mut shift: u64 = 0;
-    let mut byte;
-    
-    loop {
-        byte = bitvector.get_bits(curr_index, 8)?;
+pub fn variable_byte_decode(index: usize, bitvector: &BitVector) -> Option<(u16, usize)> {
+    // Read the first 8 bits, which includes the flag and 7 bits of data
+    let first_byte = bitvector.get_bits(index, 8)? as u16;
+
+    if first_byte < 128 {
+        // 1-byte encoding, the entire value is in `first_byte`
+        Some((first_byte, 8))
+    } else {
+        // 2-byte encoding, so we read the next 8 bits as well
+        let next_byte = bitvector.get_bits(index + 8, 8)? as u16;
         
-        n |= (byte & 0x7F) << shift;
-        curr_index += 8;
-        shift += 7;
-        
-        if byte > 127 {
-            break;
-        }
+        // Combine the lower 7 bits of `first_byte` with `next_byte`
+        let n = (first_byte & 0x7F) | (next_byte << 7);
+        Some((n, 16))
     }
-    
-    Some((n, curr_index - index))
 }

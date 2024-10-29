@@ -1,7 +1,6 @@
 use super::Compressor;
 use crate::bit_vector::BitVector;
 use crate::entropy_encoding::{variable_byte_decode, variable_byte_encode};
-
 use std::collections::BinaryHeap;
 use rustc_hash::{FxHashMap, FxHashSet};
 
@@ -23,15 +22,14 @@ impl Compressor for BPECompressor {
     }
 
     fn compress(&mut self, data: &[u8], end_positions: &[usize]) {
-        let tokenize_words = true;
-        let n_iterations = 5000;
+        let tokenize_words = false;
         let end_positions_set: FxHashSet<usize> = end_positions.iter().copied().collect();
-        let mut next_id = 256;
+        let mut next_id: u16 = 256;
 
         let mut bv = Self::tokenize(tokenize_words, data, end_positions);
         let mut token_ids = Self::initialize_token_ids(data, &bv, &mut next_id);
         let (mut pair_pos, mut max_freq) = Self::initialize_pair_positions(&bv, &token_ids, &end_positions_set);
-        Self::merge(n_iterations, &mut bv, &mut token_ids, &end_positions_set, &mut pair_pos, &mut max_freq, &mut next_id);
+        Self::merge(&mut bv, &mut token_ids, &end_positions_set, &mut pair_pos, &mut max_freq, &mut next_id);
 
         let (compressed_strings, compressed_strings_separators, dictionary, dictionary_separators) = Self::remap_by_frequency(data, &bv, &token_ids, end_positions);
         self.dictionary = dictionary;
@@ -39,13 +37,13 @@ impl Compressor for BPECompressor {
 
         let mut start = 0;
         for end in compressed_strings_separators {
-            for token_id in compressed_strings[start..end].iter() {
-                variable_byte_encode(*token_id as u64, &mut self.data);
+            for token_id in compressed_strings[start..end].iter() {   
+                variable_byte_encode(*token_id, &mut self.data);
             }
             
             self.item_end_positions.push(self.data.len());
             start = end;
-        }    
+        }
     }
 
     fn decompress(&self, buffer: &mut Vec<u8>) {
@@ -155,9 +153,9 @@ impl BPECompressor {
     }
 
     /// Initializes token IDs for the given data based on token boundaries defined by a `BitVector`
-    fn initialize_token_ids(data: &[u8], bv: &BitVector, next_id: &mut u32) -> Vec<u32> {
-        let mut token_ids: Vec<u32> = vec![0; data.len()];
-        let mut map: FxHashMap<Vec<u8>, u32> = FxHashMap::default();
+    fn initialize_token_ids(data: &[u8], bv: &BitVector, next_id: &mut u16) -> Vec<u16> {
+        let mut token_ids: Vec<u16> = vec![0; data.len()];
+        let mut map: FxHashMap<Vec<u8>, u16> = FxHashMap::default();
 
         let mut iter = bv.ones(0);
         let mut current_pos = iter.next().unwrap();
@@ -184,9 +182,9 @@ impl BPECompressor {
 
     /// Retrieves an existing token ID for a token or inserts a new one if it's not in the map.
     #[inline(always)]
-    fn get_or_insert_token(map: &mut FxHashMap<Vec<u8>, u32>, slice: &[u8], next_id: &mut u32) -> u32 {
+    fn get_or_insert_token(map: &mut FxHashMap<Vec<u8>, u16>, slice: &[u8], next_id: &mut u16) -> u16 {
         if slice.len() == 1 {
-            slice[0] as u32
+            slice[0] as u16
         }
         else if let Some(&token_id) = map.get(slice) {
             token_id
@@ -199,9 +197,9 @@ impl BPECompressor {
     }
     
     /// Initializes pair positions based on the tokenization provided by a `BitVector`
-    pub fn initialize_pair_positions(bv: &BitVector, token_ids: &[u32], end_positions_set: &FxHashSet<usize>) -> (FxHashMap<(u32, u32), FxHashSet<u32>>, BinaryHeap<(u32, (u32, u32))>) {
-        let mut pair_pos: FxHashMap<(u32, u32), FxHashSet<u32>> = FxHashMap::default();
-        let mut max_freq: BinaryHeap<(u32, (u32, u32))> = BinaryHeap::new();
+    pub fn initialize_pair_positions(bv: &BitVector, token_ids: &[u16], end_positions_set: &FxHashSet<usize>) -> (FxHashMap<(u16, u16), FxHashSet<u32>>, BinaryHeap<(u32, (u16, u16))>) {
+        let mut pair_pos: FxHashMap<(u16, u16), FxHashSet<u32>> = FxHashMap::default();
+        let mut max_freq: BinaryHeap<(u32, (u16, u16))> = BinaryHeap::new();
         
         let mut iter = bv.ones(0);
         let mut current_pos = iter.next().unwrap();
@@ -230,20 +228,19 @@ impl BPECompressor {
     }
 
     pub fn merge (
-        n_iterations: usize, 
         bv: &mut BitVector, 
-        token_ids: &mut [u32], 
+        token_ids: &mut [u16], 
         end_positions_set: &FxHashSet<usize>,
-        pair_pos: &mut FxHashMap<(u32, u32), FxHashSet<u32>>, 
-        max_freq: &mut BinaryHeap<(u32, (u32, u32))>,
-        next_id: &mut u32,
+        pair_pos: &mut FxHashMap<(u16, u16), FxHashSet<u32>>, 
+        max_freq: &mut BinaryHeap<(u32, (u16, u16))>,
+        next_id: &mut u16,
     ) {
-        for _ in 0..n_iterations {
+        while *next_id < u16::MAX / 2 {
             // Store updated pairs to minimize insertions in the max_freq heap
-            let mut updated_pairs: FxHashSet<(u32, u32)> = FxHashSet::default();
+            let mut updated_pairs: FxHashSet<(u16, u16)> = FxHashSet::default();
 
             // Get the pair with the maximum frequency
-            let (_, (t1, t2)) = loop {
+            let (freq, (t1, t2)) = loop {
                 let (freq, (t1, t2)) = max_freq.pop().unwrap();
                 let current_freq = pair_pos.get(&(t1, t2)).unwrap().len() as u32;
                 
@@ -252,6 +249,10 @@ impl BPECompressor {
                     break (freq, (t1, t2));  // Exit loop with valid pair
                 }
             };
+
+            if freq < 10 {
+                break;
+            }
 
             // Get the positions of the pair (t1, t2)
             let mut positions= pair_pos.remove(&(t1, t2)).unwrap().into_iter().collect::<Vec<u32>>();
@@ -329,12 +330,12 @@ impl BPECompressor {
         }
     }
 
-    fn remap_by_frequency(data: &[u8], bv: &BitVector, token_ids: &[u32], end_positions: &[usize]) -> (Vec<u32>, Vec<usize>, Vec<u8>, Vec<usize>) {
+    fn remap_by_frequency(data: &[u8], bv: &BitVector, token_ids: &[u16], end_positions: &[usize]) -> (Vec<u16>, Vec<usize>, Vec<u8>, Vec<usize>) {
         let mut compressed_strings = Self::get_new_token_ids(bv, token_ids);
         let mut compressed_strings_separators = Self::get_new_strings_separators(bv, end_positions);
 
         // get the frequency of each token_id
-        let mut frequency_map: FxHashMap<u32, u32> = FxHashMap::default();
+        let mut frequency_map: FxHashMap<u16, u32> = FxHashMap::default();
         for &token_id in compressed_strings.iter() {
             *frequency_map.entry(token_id).or_insert(0) += 1;
         }
@@ -354,9 +355,9 @@ impl BPECompressor {
         }
 
         // create a map from token_id to frequency rank
-        let mut rank_map: FxHashMap<u32, u32> = FxHashMap::default();
+        let mut rank_map: FxHashMap<u16, u16> = FxHashMap::default();
         for (rank, (&token_id, _)) in freq_vec.iter().enumerate() {
-            rank_map.insert(token_id, rank as u32);
+            rank_map.insert(token_id, rank as u16);
         }
 
         // remap the token_ids by frequency rank
@@ -372,8 +373,8 @@ impl BPECompressor {
         (compressed_strings, compressed_strings_separators, dictionary, dictionary_separators)
     }
 
-    fn get_dictionary_map(data: &[u8], bv: &BitVector, token_ids: &[u32]) -> FxHashMap<u32, Vec<u8>> {
-        let mut dictionary_map: FxHashMap<u32, Vec<u8>> = FxHashMap::default();
+    fn get_dictionary_map(data: &[u8], bv: &BitVector, token_ids: &[u16]) -> FxHashMap<u16, Vec<u8>> {
+        let mut dictionary_map: FxHashMap<u16, Vec<u8>> = FxHashMap::default();
         
         let mut iter = bv.ones(0);
         let mut current_pos = iter.next().unwrap();
@@ -395,8 +396,8 @@ impl BPECompressor {
         dictionary_map
     }
 
-    fn get_new_token_ids(bv: &BitVector, token_ids: &[u32]) -> Vec<u32> {
-        let mut new_token_ids: Vec<u32> = Vec::new();
+    fn get_new_token_ids(bv: &BitVector, token_ids: &[u16]) -> Vec<u16> {
+        let mut new_token_ids: Vec<u16> = Vec::new();
 
         for pos in bv.ones(0) {
             new_token_ids.push(token_ids[pos]);
