@@ -1,20 +1,20 @@
 use super::Compressor;
 use crate::bit_vector::BitVector;
-use crate::entropy_encoding::{variable_byte_decode, variable_byte_encode};
 use std::collections::BinaryHeap;
+use std::mem;
 use rustc_hash::{FxHashMap, FxHashSet};
 
 pub struct BPECompressor {
-    data: BitVector,                            // Store the compressed data as bytes
-    item_end_positions: Vec<usize>,             // Store the end positions of each compressed item
-    dictionary: Vec<u8>,                        // Store the dictionary
-    dictionary_end_positions: Vec<usize>,       // Store the end positions of each element in the dictionary
+    data: Vec<u8>,                          // Store the compressed data as bytes
+    item_end_positions: Vec<usize>,         // Store the end positions of each compressed item
+    dictionary: Vec<u8>,                    // Store the dictionary
+    dictionary_end_positions: Vec<u32>,     // Store the end positions of each element in the dictionary
 }
 
 impl Compressor for BPECompressor {
     fn new(data_size: usize, n_elements: usize) -> Self {
         BPECompressor {
-            data: BitVector::with_capacity(data_size),
+            data: Vec::with_capacity(data_size),
             item_end_positions: Vec::with_capacity(n_elements),
             dictionary: Vec::new(),
             dictionary_end_positions: Vec::new(),
@@ -22,11 +22,10 @@ impl Compressor for BPECompressor {
     }
 
     fn compress(&mut self, data: &[u8], end_positions: &[usize]) {
-        let tokenize_words = false;
         let end_positions_set: FxHashSet<usize> = end_positions.iter().copied().collect();
         let mut next_id: u16 = 256;
 
-        let mut bv = Self::tokenize(tokenize_words, data, end_positions);
+        let mut bv = BitVector::with_ones(data.len());
         let mut token_ids = Self::initialize_token_ids(data, &bv, &mut next_id);
         let (mut pair_pos, mut max_freq) = Self::initialize_pair_positions(&bv, &token_ids, &end_positions_set);
         Self::merge(&mut bv, &mut token_ids, &end_positions_set, &mut pair_pos, &mut max_freq, &mut next_id);
@@ -36,9 +35,19 @@ impl Compressor for BPECompressor {
         self.dictionary_end_positions = dictionary_separators;
 
         let mut start = 0;
+        self.item_end_positions.push(0);
         for end in compressed_strings_separators {
-            for token_id in compressed_strings[start..end].iter() {   
-                variable_byte_encode(*token_id, &mut self.data);
+            for &token_id in compressed_strings[start..end].iter() {  
+                assert!(token_id <= (u16::MAX >> 1));
+                if token_id < 128 {
+                    self.data.push(token_id as u8);
+                }
+                else {
+                    let top_bits = ((token_id >> 8) as u8) | 0x80;
+                    let bottom_bits = (token_id & 0xFF) as u8;
+                    self.data.push(top_bits);
+                    self.data.push(bottom_bits);
+                }
             }
             
             self.item_end_positions.push(self.data.len());
@@ -48,51 +57,77 @@ impl Compressor for BPECompressor {
 
     fn decompress(&self, buffer: &mut Vec<u8>) {
         let mut pos = 0;
-
-        while pos < self.data.len() {
-            let (token_id, length) = variable_byte_decode(pos, &self.data).unwrap();
-            pos += length;
-
-            let dic_start = if token_id == 0 {
-                0
-            } else {
-                self.dictionary_end_positions[token_id as usize - 1]
-            };
-
-            let dic_end = self.dictionary_end_positions[token_id as usize];
+        
+        // Assume the buffer is preallocated to the necessary size.
+        unsafe {
+            // Use raw pointers to avoid bounds checking on `self.data` and `self.dictionary`
+            let data_ptr = self.data.as_ptr();
+            let dict_ptr = self.dictionary.as_ptr();
+            let end_positions_ptr = self.dictionary_end_positions.as_ptr();
             
-            buffer.extend_from_slice(&self.dictionary[dic_start..dic_end]);
+            while pos < self.data.len() {
+                let mut token_id = *data_ptr.add(pos) as u16;
+                pos += 1;
+    
+                if token_id > 127 {
+                    token_id = (token_id & 0x7F) << 8 | *data_ptr.add(pos) as u16;
+                    pos += 1;
+                }
+    
+                // Access dictionary positions using raw pointers
+                let dic_start = *end_positions_ptr.add(token_id as usize) as usize;
+                let dic_end = *end_positions_ptr.add(token_id as usize + 1) as usize;
+                let length = dic_end - dic_start;
+    
+                // Directly copy data from dictionary to buffer
+                let src_ptr = dict_ptr.add(dic_start);
+                let dest_ptr = buffer.as_mut_ptr().add(buffer.len());
+                std::ptr::copy_nonoverlapping(src_ptr, dest_ptr, length);
+    
+                // Update buffer length manually
+                buffer.set_len(buffer.len() + length);
+            }
         }
     }
 
     fn get_item_at(&self, index: usize, buffer: &mut Vec<u8>) {
-        let mut pos = if index == 0 {
-            0
-        } else {
-            self.item_end_positions[index - 1]
-        };
-
-        let end = self.item_end_positions[index];
-
-        while pos < end {
-            let (token_id, length) = variable_byte_decode(pos, &self.data).unwrap();
-            pos += length;
-
-            let dic_start = if token_id == 0 {
-                0
-            } else {
-                self.dictionary_end_positions[token_id as usize - 1]
-            };
-
-            let dic_end = self.dictionary_end_positions[token_id as usize];
-            
-            buffer.extend_from_slice(&self.dictionary[dic_start..dic_end]);
+        let mut pos = self.item_end_positions[index];
+        let end = self.item_end_positions[index + 1];
+    
+        unsafe {
+            // Set up raw pointers to data structures to avoid bounds checking
+            let data_ptr = self.data.as_ptr();
+            let dict_ptr = self.dictionary.as_ptr();
+            let end_positions_ptr = self.dictionary_end_positions.as_ptr();
+    
+            while pos < end {
+                // Retrieve token ID, handling potential multi-byte encoding
+                let mut token_id = *data_ptr.add(pos) as u16;
+                pos += 1;
+    
+                if token_id > 127 {
+                    token_id = (token_id & 0x7F) << 8 | *data_ptr.add(pos) as u16;
+                    pos += 1;
+                }
+    
+                // Access dictionary start and end positions
+                let dic_start = *end_positions_ptr.add(token_id as usize) as usize;
+                let dic_end = *end_positions_ptr.add(token_id as usize + 1) as usize;
+                let length = dic_end - dic_start;
+    
+                // Copy dictionary data directly into the buffer
+                let src_ptr = dict_ptr.add(dic_start);
+                let dest_ptr = buffer.as_mut_ptr().add(buffer.len());
+                std::ptr::copy_nonoverlapping(src_ptr, dest_ptr, length);
+    
+                // Update buffer length manually to include new data
+                buffer.set_len(buffer.len() + length);
+            }
         }
-        
     }
 
     fn space_used_bytes(&self) -> usize {
-        self.data.len() / 8 + self.dictionary.len() + (4 * self.dictionary_end_positions.len())
+        self.data.len() + self.dictionary.len() + (self.dictionary_end_positions.len() * mem::size_of::<u32>())
     }
 
     fn name(&self) -> &str {
@@ -101,57 +136,6 @@ impl Compressor for BPECompressor {
 }
 
 impl BPECompressor { 
-    /// Tokenizes the input data based on whether to tokenize by words or bytes
-    fn tokenize(tokenize_words: bool, data: &[u8], end_positions: &[usize]) -> BitVector {
-        if tokenize_words {
-            Self::tokenize_words(data, end_positions)
-        }
-        else {
-            Self::tokenize_bytes(data)
-        }
-    }
-
-    /// Tokenizes the input data by considering each byte as a token
-    fn tokenize_bytes(data: &[u8]) -> BitVector {
-        let mut bv = BitVector::with_ones(data.len());
-        bv.shrink_to_fit();
-
-        bv
-    }
-
-    /// Tokenizes the input data by detecting word boundaries and non-alphanumeric characters
-    fn tokenize_words(data: &[u8], end_positions: &[usize]) -> BitVector {
-        let mut bv = BitVector::with_zeroes(data.len());
-        let mut string_start = 0;
-        
-        for &string_end in end_positions.iter() {
-            if string_end == string_start {
-                continue;
-            }
-            bv.set(string_start, true);
-            let mut prev_not_alphanumeric = if data[string_start].is_ascii_alphanumeric() { false } else { true };
-
-            for i in string_start + 1..string_end {
-                if !data[i].is_ascii_alphanumeric() {
-                    bv.set(i, true);
-                    prev_not_alphanumeric = true;
-                }
-                else {
-                    if prev_not_alphanumeric {
-                        bv.set(i, true);
-                    }
-                    prev_not_alphanumeric = false;
-                }
-            }
-
-            string_start = string_end;
-        }
-        
-        bv.shrink_to_fit();
-
-        bv
-    }
-
     /// Initializes token IDs for the given data based on token boundaries defined by a `BitVector`
     fn initialize_token_ids(data: &[u8], bv: &BitVector, next_id: &mut u16) -> Vec<u16> {
         let mut token_ids: Vec<u16> = vec![0; data.len()];
@@ -235,7 +219,7 @@ impl BPECompressor {
         max_freq: &mut BinaryHeap<(u32, (u16, u16))>,
         next_id: &mut u16,
     ) {
-        while *next_id < u16::MAX / 2 {
+        while *next_id <= (u16::MAX >> 1) {
             // Store updated pairs to minimize insertions in the max_freq heap
             let mut updated_pairs: FxHashSet<(u16, u16)> = FxHashSet::default();
 
@@ -330,7 +314,7 @@ impl BPECompressor {
         }
     }
 
-    fn remap_by_frequency(data: &[u8], bv: &BitVector, token_ids: &[u16], end_positions: &[usize]) -> (Vec<u16>, Vec<usize>, Vec<u8>, Vec<usize>) {
+    fn remap_by_frequency(data: &[u8], bv: &BitVector, token_ids: &[u16], end_positions: &[usize]) -> (Vec<u16>, Vec<usize>, Vec<u8>, Vec<u32>) {
         let mut compressed_strings = Self::get_new_token_ids(bv, token_ids);
         let mut compressed_strings_separators = Self::get_new_strings_separators(bv, end_positions);
 
@@ -347,11 +331,11 @@ impl BPECompressor {
         // populate the dictionary
         let dictionary_map = Self::get_dictionary_map(data, bv, token_ids);
         let mut dictionary = Vec::new();
-        let mut dictionary_separators  = Vec::new();
+        let mut dictionary_separators  = vec![0u32];
         for &(token_id, _) in freq_vec.iter() {
             let bytes = dictionary_map.get(&token_id).unwrap();
             dictionary.extend_from_slice(bytes);
-            dictionary_separators.push(dictionary.len());
+            dictionary_separators.push(dictionary.len() as u32);
         }
 
         // create a map from token_id to frequency rank

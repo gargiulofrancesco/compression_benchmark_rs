@@ -1,3 +1,5 @@
+use std::mem;
+
 use lz4::block;
 use crate::compressor::Compressor;
 use super::BlockCompressor;
@@ -43,7 +45,7 @@ impl Compressor for LZ4Compressor {
     }
 
     fn space_used_bytes(&self) -> usize {
-        self.data.len() + self.blocks_metadata.len() * (8 + 8 + 4)
+        self.data.len() + self.blocks_metadata.len() * (mem::size_of::<usize>() + mem::size_of::<usize>() + mem::size_of::<i32>())
     }
 
     fn name(&self) -> &str {
