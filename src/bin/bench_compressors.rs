@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
 use std::time::Instant;
@@ -70,38 +71,67 @@ fn benchmark<T: Compressor>(compressor: &mut T, dataset_name: String, data: &[u8
 
 /// Print benchmark results in a human-readable format
 fn print_benchmark_results(results: &[BenchmarkResult]) {
-    let mut table = Table::new();
-    
-    // Add the header row
-    table.add_row(row![
-        "Dataset", 
-        "Compressor", 
-        "Comp Rate", 
-        "Comp Speed (MB/s)", 
-        "Decomp Speed (MB/s)", 
-        "Random Access Speed (MB/s)", 
-        "Avg Random Access Time (s)"
-    ]);
-    
-    // Add each benchmark result row
+    // Group results by compressor name
+    let mut grouped_results: HashMap<String, Vec<&BenchmarkResult>> = HashMap::new();
     for result in results {
-        table.add_row(row![
-            result.dataset_name,
-            result.compressor_name,
-            format!("{:.3}", result.compression_rate),
-            format!("{:.2}", result.compression_speed),
-            format!("{:.2}", result.decompression_speed),
-            format!("{:.2}", result.random_access_speed),
-            format!("{:.9}", result.average_random_access_time),
-        ]);
+        grouped_results.entry(result.compressor_name.clone())
+            .or_default()
+            .push(result);
     }
-    
-    // Print the table
-    table.printstd();
 
-    let average_compression_speed: f64 = results.iter().map(|r| r.compression_speed).sum::<f64>() / results.len() as f64;
-    let average_decompression_speed: f64 = results.iter().map(|r| r.decompression_speed).sum::<f64>() / results.len() as f64;
-    println!("Average Compression Speed: {:.2} MB/s, Average Decompression Speed: {:.2} MB/s", average_compression_speed, average_decompression_speed);
+    // Process each compressor group
+    for (compressor, mut group) in grouped_results {
+        // Sort by dataset name
+        group.sort_by(|a, b| a.dataset_name.cmp(&b.dataset_name));
+        
+        // Create a new table for each compressor
+        let mut table = Table::new();
+        table.add_row(row![
+            "Dataset", 
+            "Compressor", 
+            "Comp Rate", 
+            "Comp Speed (MB/s)", 
+            "Decomp Speed (MB/s)", 
+            "Random Access Speed (MB/s)", 
+            "Avg Random Access Time (s)"
+        ]);
+
+        // Add rows for each result in the sorted group
+        for result in &group {
+            table.add_row(row![
+                &result.dataset_name,
+                &result.compressor_name,
+                format!("{:.3}", result.compression_rate),
+                format!("{:.2}", result.compression_speed),
+                format!("{:.2}", result.decompression_speed),
+                format!("{:.2}", result.random_access_speed),
+                format!("{:.9}", result.average_random_access_time),
+            ]);
+        }
+
+        // Calculate averages for the group
+        let len = group.len() as f64;
+        let avg_compression_rate = group.iter().map(|r| r.compression_rate).sum::<f64>() / len;
+        let avg_compression_speed = group.iter().map(|r| r.compression_speed).sum::<f64>() / len;
+        let avg_decompression_speed = group.iter().map(|r| r.decompression_speed).sum::<f64>() / len;
+        let avg_random_access_speed = group.iter().map(|r| r.random_access_speed).sum::<f64>() / len;
+        let avg_average_random_access_time = group.iter().map(|r| r.average_random_access_time).sum::<f64>() / len;
+
+        // Add average row
+        table.add_row(row![
+            "AVERAGE",
+            &compressor,
+            format!("{:.3}", avg_compression_rate),
+            format!("{:.2}", avg_compression_speed),
+            format!("{:.2}", avg_decompression_speed),
+            format!("{:.2}", avg_random_access_speed),
+            format!("{:.9}", avg_average_random_access_time),
+        ]);
+
+        // Print the table for this compressor
+        println!("\nResults for Compressor: {}", compressor);
+        table.printstd();
+    }
 }
 
 fn generate_queries(n_elements: usize, selectivity: f64, seed: u64) -> Vec<usize> {
