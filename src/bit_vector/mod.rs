@@ -137,6 +137,9 @@ impl BitVector {
     pub fn next_one(&self, pos: usize) -> Option<usize> {
         let mut next_pos = pos + 1;
         let mut word_pos = next_pos >> 6;
+        if word_pos >= self.data.len() {
+            return None;
+        }
         let mut buffer = self.data[word_pos] >> (next_pos % 64);
         
         while buffer == 0 {

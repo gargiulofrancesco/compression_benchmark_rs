@@ -81,8 +81,8 @@ impl Compressor for BPECompressor {
     
                 // Directly copy data from dictionary to buffer
                 let src_ptr = dict_ptr.add(dic_start);
-                let dest_ptr = buffer.as_mut_ptr().add(buffer.len());
-                std::ptr::copy_nonoverlapping(src_ptr, dest_ptr, length);
+                let dst_ptr = buffer.as_mut_ptr().add(buffer.len());
+                std::ptr::copy_nonoverlapping(src_ptr, dst_ptr, length);
     
                 // Update buffer length manually
                 buffer.set_len(buffer.len() + length);
