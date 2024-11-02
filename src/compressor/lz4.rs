@@ -4,6 +4,8 @@ use lz4::block;
 use crate::compressor::Compressor;
 use super::BlockCompressor;
 
+const DEFAULT_BLOCK_SIZE: usize = 64 * 1024;  // 64 KB
+
 pub struct LZ4Compressor {
     block_size: usize,                      // Maximum size of each block (in bytes)
     data: Vec<u8>,                          // Store compressed blocks
@@ -20,12 +22,11 @@ pub struct BlockMetadata {
 impl Compressor for LZ4Compressor {
     /// Create a new LZ4Compressor preallocating the amount of memory needed.
     fn new(data_size: usize, n_elements: usize) -> Self {
-        let default_block_size = 64 * 1024;  // 64 KB
         
         LZ4Compressor {
-            block_size: default_block_size,
+            block_size: DEFAULT_BLOCK_SIZE,
             data: Vec::with_capacity(data_size),
-            blocks_metadata: Vec::with_capacity(data_size / default_block_size),
+            blocks_metadata: Vec::with_capacity(data_size / DEFAULT_BLOCK_SIZE),
             item_end_positions: Vec::with_capacity(n_elements),
         }
     }
@@ -56,6 +57,8 @@ impl Compressor for LZ4Compressor {
 
 impl BlockCompressor for LZ4Compressor {
     fn set_block_size(&mut self, block_size: usize) {
+        debug_assert!(self.data.is_empty() && self.blocks_metadata.is_empty() && self.item_end_positions.is_empty()); // Only allow setting the block size before compressing data
+
         self.block_size = block_size;
         self.blocks_metadata = Vec::with_capacity(self.data.capacity() / block_size);
     }

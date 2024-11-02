@@ -9,12 +9,13 @@ impl Compressor for CopyCompressor {
     fn new(data_size: usize, n_elements: usize) -> Self {
         Self {
             data: Vec::with_capacity(data_size),
-            end_positions: Vec::with_capacity(n_elements),
+            end_positions: Vec::with_capacity(n_elements + 1),
         }
     }
 
     /// Compresses the provided data by simply copying it to internal storage.
     fn compress(&mut self, data: &[u8], end_positions: &[usize]) {
+        self.end_positions.push(0);
         self.end_positions.extend_from_slice(end_positions);
         self.data.extend_from_slice(data);
     }
@@ -27,12 +28,8 @@ impl Compressor for CopyCompressor {
     /// Retrieves an item starting at the specified index.
     #[inline(always)]
     fn get_item_at(&self, index: usize, buffer: &mut Vec<u8>) {
-        let start = if index == 0 {
-            0
-        } else {
-            self.end_positions[index - 1]
-        };
-        let end = self.end_positions[index];
+        let start = self.end_positions[index];
+        let end = self.end_positions[index + 1];
         buffer.extend_from_slice(&self.data[start..end]);
     }
 
