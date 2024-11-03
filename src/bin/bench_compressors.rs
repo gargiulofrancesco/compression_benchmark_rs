@@ -88,7 +88,6 @@ fn print_benchmark_results(results: &[BenchmarkResult]) {
         let mut table = Table::new();
         table.add_row(row![
             "Dataset", 
-            "Compressor", 
             "Comp Rate", 
             "Comp Speed (MB/s)", 
             "Decomp Speed (MB/s)", 
@@ -100,7 +99,6 @@ fn print_benchmark_results(results: &[BenchmarkResult]) {
         for result in &group {
             table.add_row(row![
                 &result.dataset_name,
-                &result.compressor_name,
                 format!("{:.3}", result.compression_rate),
                 format!("{:.2}", result.compression_speed),
                 format!("{:.2}", result.decompression_speed),
@@ -120,7 +118,6 @@ fn print_benchmark_results(results: &[BenchmarkResult]) {
         // Add average row
         table.add_row(row![
             "AVERAGE",
-            &compressor,
             format!("{:.3}", avg_compression_rate),
             format!("{:.2}", avg_compression_speed),
             format!("{:.2}", avg_decompression_speed),
