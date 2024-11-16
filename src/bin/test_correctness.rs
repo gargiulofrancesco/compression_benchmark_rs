@@ -7,7 +7,7 @@ use std::fs;
 use std::path::Path;
 
 pub fn test<T: Compressor>(compressor: &mut T, data: &[u8], end_positions: &[usize]) {
-    let mut buffer: Vec<u8> = Vec::with_capacity(data.len());  // Buffer for decompression
+    let mut buffer: Vec<u8> = Vec::with_capacity(data.len() + 1024);  // Buffer for decompression
 
     // === Compression and Decompression Test ===
     compressor.compress(&data, &end_positions);  // Compress the dataset

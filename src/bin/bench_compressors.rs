@@ -24,7 +24,7 @@ struct BenchmarkResult {
 }
 
 fn benchmark<T: Compressor>(compressor: &mut T, dataset_name: String, data: &[u8], end_positions: &[usize], queries: &[usize]) -> BenchmarkResult {
-    let mut buffer: Vec<u8> = Vec::with_capacity(data.len());  // Buffer for decompression
+    let mut buffer: Vec<u8> = Vec::with_capacity(data.len() + 1024);  // Buffer for decompression
 
     let data_bytes = data.len() as f64;
     let random_access_bytes: usize = queries.iter().map(|&i| {

@@ -37,7 +37,7 @@ The following tests aim to measure the performance of various dictionary variant
 | wiki        | 1,914 |  422,10 | 2,14 | 1,00 | 0,07 | 0,05 |
 | wikipedia   | 2,358 |  549,11 | 2,71 | 1,02 | 0,08 | 0,05 |
 | yago        | 1,769 |  402,84 | 1,74 | 0,89 | 0,05 | 0,04 |
-| **Average** | **2,573** | **629,33** | | | | | 
+| **Average** | 2,573 | 629,33 | | | | | 
 
 | Dataset | Compression Rate | Decompression Speed (MB/s) | Original Size (MB) | Data Size (MB) | Dictionary Data Size (MB) | Dictionary Separators Size (MB) |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |

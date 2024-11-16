@@ -6,6 +6,7 @@ edition = "2021"
 [profile.release]
 lto = true
 debug = true
+opt-level = 3
 
 [dependencies]
 serde = { version = "1.0", features = ["derive"] }
