@@ -42,6 +42,9 @@ pub trait BlockCompressor: Compressor {
     /// Returns the block index that contains a given item.
     fn get_block_index(&self, item_index: usize) -> usize;
 
+    /// Returns the buffer used to store the compressed data of a block.
+    fn get_block_buffer(&self) -> Vec<u8>;
+
     /// Returns the start and end indices of the item at the specified index within a block.
     fn get_item_delimiters(&self, block_index: usize, item_index: usize) -> (usize, usize);
 
@@ -55,11 +58,13 @@ pub trait BlockCompressor: Compressor {
 
         for &item_end in end_positions {
             let sitem_size = item_end - item_start;
-
+        
             // If adding this item exceeds the block size, compress the current block
             if current_block_size + sitem_size > block_size {
                 // Compress the block from block_start up to item_start
-                self.compress_block(&data[block_start..item_start], num_items_in_block);
+                unsafe {
+                    self.compress_block(data.get_unchecked(block_start..item_start), num_items_in_block);
+                }
 
                 // Reset block parameters for the next block
                 block_start = item_start;  // Start the next block from this item
@@ -77,7 +82,9 @@ pub trait BlockCompressor: Compressor {
 
         // Compress the last block, if there is any remaining data
         if num_items_in_block > 0 {
-            self.compress_block(&data[block_start..item_start], num_items_in_block);
+            unsafe {
+                self.compress_block(data.get_unchecked(block_start..item_start), num_items_in_block);
+            }
         }
     }
 
@@ -92,16 +99,21 @@ pub trait BlockCompressor: Compressor {
     fn get_item_at(&self, index: usize, buffer: &mut Vec<u8>) {
         // Find the block that contains the item
         let block_index = self.get_block_index(index);
-        let block_size = self.get_block_size();
 
         // Decompress the block containing the item
-        let mut block_buffer = Vec::with_capacity(block_size);
+        let mut block_buffer = self.get_block_buffer();
         self.decompress_block(block_index, &mut block_buffer);
 
         // Find the item delimiters within the block
         let (start, end) = self.get_item_delimiters(block_index, index);
 
-        // Retrieve the item starting at block_offset
-        buffer.extend_from_slice(&block_buffer[start..end]);
+        // Retrieve the item starting at block_offset using an optimized approach
+        unsafe {
+            // Get a slice of the item without bounds checking
+            let item_slice = block_buffer.get_unchecked(start..end);
+
+            // Extend the buffer with the item slice
+            buffer.extend_from_slice(item_slice);
+        }
     }
 }

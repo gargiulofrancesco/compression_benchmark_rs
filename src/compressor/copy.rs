@@ -28,9 +28,13 @@ impl Compressor for CopyCompressor {
     /// Retrieves an item starting at the specified index.
     #[inline(always)]
     fn get_item_at(&self, index: usize, buffer: &mut Vec<u8>) {
-        let start = self.end_positions[index];
-        let end = self.end_positions[index + 1];
-        buffer.extend_from_slice(&self.data[start..end]);
+        unsafe {
+            let start = *self.end_positions.get_unchecked(index);
+            let end = *self.end_positions.get_unchecked(index + 1);
+        
+            let slice = self.data.get_unchecked(start..end);
+            buffer.extend_from_slice(slice);
+        }
     }
 
     /// Returns the amount of space used by the compressed data.

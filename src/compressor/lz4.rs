@@ -1,5 +1,4 @@
 use std::mem;
-
 use lz4::block;
 use crate::compressor::Compressor;
 use super::BlockCompressor;
@@ -57,7 +56,8 @@ impl Compressor for LZ4Compressor {
 
 impl BlockCompressor for LZ4Compressor {
     fn set_block_size(&mut self, block_size: usize) {
-        debug_assert!(self.data.is_empty() && self.blocks_metadata.is_empty() && self.item_end_positions.is_empty()); // Only allow setting the block size before compressing data
+        // Only allow setting the block size before compressing data
+        debug_assert!(self.data.is_empty() && self.blocks_metadata.is_empty() && self.item_end_positions.is_empty()); 
 
         self.block_size = block_size;
         self.blocks_metadata = Vec::with_capacity(self.data.capacity() / block_size);
@@ -67,21 +67,20 @@ impl BlockCompressor for LZ4Compressor {
     fn compress_block(&mut self, block: &[u8], num_items: usize) {
         // Get current size of compressed data (append to this)
         let current_size = self.data.len();
+        let block_len = block.len();
 
-        // Temporarily extend the length of the vector
-        // This ensures we can safely create a slice for compression
         unsafe {
-            self.data.set_len(current_size + block.len());
-        }
+            // Temporarily extend the length of the vector
+            // This ensures we can safely create a slice for compression
+            self.data.set_len(current_size + block_len);
     
-        // Create a mutable slice of `self.data` starting from the current size
-        let buffer_slice = &mut self.data[current_size..current_size + block.len()];
+            // Create a mutable slice of `self.data` starting from the current size
+            let buffer_slice = self.data.get_unchecked_mut(current_size..current_size + block_len);
 
-        // Compress the block into the buffer slice
-        let compressed_buffer_size = block::compress_to_buffer(block, None, false, buffer_slice).unwrap();
-        
-        // Adjust the length of `self.data` to include only the actual compressed data
-        unsafe {
+            // Compress the block into the buffer slice
+            let compressed_buffer_size = block::compress_to_buffer(block, None, false, buffer_slice).unwrap();
+            
+            // Adjust the length of `self.data` to include only the actual compressed data
             self.data.set_len(current_size + compressed_buffer_size);
         }
 
@@ -89,7 +88,7 @@ impl BlockCompressor for LZ4Compressor {
         let end_position = self.data.len();
         let num_items_psum = num_items + self.blocks_metadata.last()
             .map_or(0, |meta| meta.num_items_psum);  // Cumulative number of items
-        let uncompressed_size = block.len() as i32;    // Uncompressed size of the block
+        let uncompressed_size = block_len as i32;    // Uncompressed size of the block
     
         // Push metadata for this block
         self.blocks_metadata.push(BlockMetadata {
@@ -101,32 +100,33 @@ impl BlockCompressor for LZ4Compressor {
         
     #[inline(always)]
     fn decompress_block(&self, block_index: usize, buffer: &mut Vec<u8>) {
-        // Get the start and end positions of the block
-        let start = if block_index == 0 {
-            0
-        } else {
-            self.blocks_metadata[block_index - 1].end_position
-        };
-        let end = self.blocks_metadata[block_index].end_position;
-
-        // Extract the compressed block from self.data
-        let compressed_block = &self.data[start..end];
-
-        // Get the uncompressed size of the block
-        let uncompressed_block_size = self.blocks_metadata[block_index].uncompressed_size as usize;
-
-        let current_buffer_size = buffer.len();
-        let new_buffer_size = current_buffer_size + uncompressed_block_size;
-
         unsafe {
+            // Get the start and end positions of the block
+            let start = if block_index == 0 {
+                0
+            } else {
+                self.blocks_metadata.get_unchecked(block_index - 1).end_position
+            };
+            let end = self.blocks_metadata.get_unchecked(block_index).end_position;
+
+            // Extract the compressed block from self.data
+            let compressed_block = &self.data.get_unchecked(start..end);
+
+            // Get the uncompressed size of the block
+            let uncompressed_block_size = self.blocks_metadata.get_unchecked(block_index).uncompressed_size as usize;
+
+            
+            let current_buffer_size = buffer.len();
+            let new_buffer_size = current_buffer_size + uncompressed_block_size;
+
             buffer.set_len(new_buffer_size);
+            
+            // Create a mutable slice of `self.data` starting from the current size
+            let buffer_slice = buffer.get_unchecked_mut(current_buffer_size..new_buffer_size);
+
+            // Decompress into the provided buffer
+            let _ = block::decompress_to_buffer(compressed_block, Some(uncompressed_block_size as i32), buffer_slice);
         }
-
-        // Create a mutable slice of `self.data` starting from the current size
-        let buffer_slice = &mut buffer[current_buffer_size..new_buffer_size];
-
-        // Decompress into the provided buffer
-        let _ = block::decompress_to_buffer(compressed_block, Some(uncompressed_block_size as i32), buffer_slice);
     }
 
     #[inline(always)]
@@ -142,16 +142,22 @@ impl BlockCompressor for LZ4Compressor {
     #[inline(always)]
     fn get_block_index(&self, item_index: usize) -> usize {
         debug_assert!(item_index < self.item_end_positions.len());
+        
+        self.blocks_metadata
+            .binary_search_by(|block| {
+                if item_index < block.num_items_psum {
+                    std::cmp::Ordering::Greater
+                } else {
+                    std::cmp::Ordering::Less
+                }
+            })
+            .unwrap_or_else(|idx| idx)
+    }
 
-        let mut block_index = 0;
-        for (i, block) in self.blocks_metadata.iter().enumerate() {
-            if item_index < block.num_items_psum {
-                block_index = i;
-                break;
-            }
-        }
-
-        block_index
+    #[inline(always)]
+    fn get_block_buffer(&self) -> Vec<u8> {
+        let buffer = Vec::with_capacity(self.block_size);
+        buffer
     }
 
     #[inline(always)]
@@ -159,15 +165,30 @@ impl BlockCompressor for LZ4Compressor {
         debug_assert!(block_index < self.get_num_blocks());
         debug_assert!(item_index < self.blocks_metadata[block_index].num_items_psum);
 
-        let first_item_index = self.blocks_metadata.get(block_index.wrapping_sub(1))
-            .map_or(0, |meta| meta.num_items_psum);
+        unsafe{
+            // Get the index of the first item in the block
+            let first_item_index = if block_index == 0 {
+                0
+            } else {
+                self.blocks_metadata.get_unchecked(block_index - 1).num_items_psum
+            };
 
-        let start = self.item_end_positions.get(item_index.wrapping_sub(1)).copied().unwrap_or(0);
-        let end = self.item_end_positions[item_index];
+            // Start and end positions of the item
+            let start = if item_index > 0 {
+                *self.item_end_positions.get_unchecked(item_index - 1)
+            } else {
+                0
+            };
+            let end = *self.item_end_positions.get_unchecked(item_index);
 
-        // Adjust for the block, if needed (only for non-zero blocks)
-        let adjustment = if block_index == 0 { 0 } else { self.item_end_positions[first_item_index - 1] };
-        
-        (start - adjustment, end - adjustment)
+            // Adjust for the block, if needed (only for non-zero blocks)
+            let adjustment = if first_item_index > 0 {
+                *self.item_end_positions.get_unchecked(first_item_index - 1)
+            } else {
+                0
+            };
+            
+            (start - adjustment, end - adjustment)            
+        }
     }
 }
