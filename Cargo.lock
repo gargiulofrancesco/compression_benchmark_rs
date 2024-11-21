@@ -78,6 +78,11 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "34aa73646ffb006b8f5147f3dc182bd4bcb190227ce861fc4a4844bf8e3cb2c0"
 
 [[package]]
+name = "fsst-rs"
+version = "0.4.3"
+source = "git+https://github.com/gargiulofrancesco/fsst?branch=develop#8342aff0ea367bac5b36633737e83eaff2da3a9e"
+
+[[package]]
 name = "getrandom"
 version = "0.2.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -233,6 +238,7 @@ dependencies = [
 name = "random_access_string_compression"
 version = "0.1.0"
 dependencies = [
+ "fsst-rs",
  "lz4",
  "prettytable",
  "rand",

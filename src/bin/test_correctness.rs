@@ -1,6 +1,7 @@
 use random_access_string_compression::compressor::bpe::BPECompressor;
 use random_access_string_compression::compressor::lz4::LZ4Compressor;
 use random_access_string_compression::compressor::copy::CopyCompressor;
+use random_access_string_compression::compressor::fsst::FSSTCompressor;
 use random_access_string_compression::dataset::{process_dataset, Dataset};
 use random_access_string_compression::compressor::Compressor;
 use std::fs;
@@ -9,7 +10,7 @@ use std::path::Path;
 pub fn test<T: Compressor>(compressor: &mut T, data: &[u8], end_positions: &[usize]) {
     let mut buffer: Vec<u8> = Vec::with_capacity(data.len() + 1024);  // Buffer for decompression
 
-    // === Compression and Decompression Test ===
+    // Compression and Decompression Test
     compressor.compress(&data, &end_positions);  // Compress the dataset
     compressor.decompress(&mut buffer);  // Decompress the dataset
     for (i, byte) in buffer.iter().enumerate() {
@@ -17,7 +18,7 @@ pub fn test<T: Compressor>(compressor: &mut T, data: &[u8], end_positions: &[usi
             "Decompressed data does not match original data at index {} for compressor: {}", i, compressor.name());
     }
 
-    // === Random Access Test ===
+    // Random Access Test
     for query in 0..end_positions.len() {
         buffer.clear();  // Clear the buffer for random access decompression
         compressor.get_item_at(query, &mut buffer);  // The item obtained through random access
@@ -33,6 +34,7 @@ enum CompressorEnum {
     Copy(CopyCompressor),
     LZ4(LZ4Compressor),
     BPE(BPECompressor),
+    FSST(FSSTCompressor),
 }
 
 fn initialize_compressors(data_size: usize, n_elements: usize) -> Vec<CompressorEnum> {
@@ -40,6 +42,7 @@ fn initialize_compressors(data_size: usize, n_elements: usize) -> Vec<Compressor
         CompressorEnum::Copy(CopyCompressor::new(data_size, n_elements)),
         CompressorEnum::LZ4(LZ4Compressor::new(data_size, n_elements)),
         CompressorEnum::BPE(BPECompressor::new(data_size, n_elements)),
+        CompressorEnum::FSST(FSSTCompressor::new(data_size, n_elements)),
     ]
 }
 
@@ -71,6 +74,9 @@ fn main() {
                         test(compressor, &data, &end_positions);
                     }
                     CompressorEnum::BPE(compressor) => {
+                        test(compressor, &data, &end_positions);
+                    }
+                    CompressorEnum::FSST(compressor) => {
                         test(compressor, &data, &end_positions);
                     }
                 }

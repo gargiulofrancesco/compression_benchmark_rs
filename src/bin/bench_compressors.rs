@@ -6,6 +6,7 @@ use random_access_string_compression::compressor::bpe::BPECompressor;
 use random_access_string_compression::{compressor::Compressor, dataset::process_dataset};
 use random_access_string_compression::compressor::lz4::LZ4Compressor;
 use random_access_string_compression::compressor::copy::CopyCompressor;
+use random_access_string_compression::compressor::fsst::FSSTCompressor;
 use random_access_string_compression::dataset::Dataset;
 use prettytable::{Table, row};
 use rand::prelude::*;
@@ -32,21 +33,21 @@ fn benchmark<T: Compressor>(compressor: &mut T, dataset_name: String, data: &[u8
         end_positions[i] - prev_position
     }).sum();    
 
-    // === Compression Benchmark ===
+    // Compression
     let start_compression = Instant::now();
     compressor.compress(&data, end_positions);  // Compress the dataset
     let compression_time = start_compression.elapsed().as_secs_f64();
     let compression_rate = data_bytes / compressor.space_used_bytes() as f64;
     let compression_speed = (data_bytes / (1024.0 * 1024.0)) / compression_time;    
 
-    // === Decompression Benchmark ===
+    // Decompression
     buffer.clear();
     let start_decompression = Instant::now();
     compressor.decompress(&mut buffer);  // Decompress the dataset
     let decompression_time = start_decompression.elapsed().as_secs_f64();
     let decompression_speed = (data_bytes / (1024.0 * 1024.0)) / decompression_time;
 
-    // === Random Access Benchmark ===
+    // Random Access
     let mut random_access_times = Vec::new();
     for &query in queries {
         buffer.clear();
@@ -154,6 +155,7 @@ enum CompressorEnum {
     Copy(CopyCompressor),
     LZ4(LZ4Compressor),
     BPE(BPECompressor),
+    FSST(FSSTCompressor),
 }
 
 fn initialize_compressors(data_size: usize, n_elements: usize) -> Vec<CompressorEnum> {
@@ -161,6 +163,7 @@ fn initialize_compressors(data_size: usize, n_elements: usize) -> Vec<Compressor
         CompressorEnum::Copy(CopyCompressor::new(data_size, n_elements)),
         CompressorEnum::LZ4(LZ4Compressor::new(data_size, n_elements)),
         CompressorEnum::BPE(BPECompressor::new(data_size, n_elements)),
+        CompressorEnum::FSST(FSSTCompressor::new(data_size, n_elements)),
     ]
 }
 
@@ -197,6 +200,10 @@ fn main() {
                         results.push(result);
                     }
                     CompressorEnum::BPE(compressor) => {
+                        let result = benchmark(compressor, dataset_name.clone(), &data, &end_positions, &queries);
+                        results.push(result);
+                    }
+                    CompressorEnum::FSST(compressor) => {
                         let result = benchmark(compressor, dataset_name.clone(), &data, &end_positions, &queries);
                         results.push(result);
                     }

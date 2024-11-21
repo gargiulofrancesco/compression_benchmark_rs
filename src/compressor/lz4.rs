@@ -114,7 +114,6 @@ impl BlockCompressor for LZ4Compressor {
 
             // Get the uncompressed size of the block
             let uncompressed_block_size = self.blocks_metadata.get_unchecked(block_index).uncompressed_size as usize;
-
             
             let current_buffer_size = buffer.len();
             let new_buffer_size = current_buffer_size + uncompressed_block_size;
