@@ -1,6 +1,6 @@
 pub mod lz4;
 pub mod copy;
-pub mod bpe;
+pub mod bpe4;
 pub mod fsst;
 
 pub trait Compressor {

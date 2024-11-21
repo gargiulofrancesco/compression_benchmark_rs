@@ -30,7 +30,7 @@ impl Compressor for FSSTCompressor {
 
     fn decompress(&self, buffer: &mut Vec<u8>) {
         let decompressor = self.compressor.as_ref().unwrap().decompressor();
-        self.get_decompressor().decompress_into(&self.data, buffer);
+        decompressor.decompress_into(&self.data, buffer);
     }
 
     /// Retrieves an item starting at the specified index.
@@ -40,22 +40,18 @@ impl Compressor for FSSTCompressor {
             let start = *self.end_positions.get_unchecked(index);
             let end = *self.end_positions.get_unchecked(index + 1);
             let data = &self.data[start..end];
-            self.get_decompressor().decompress_into(data, buffer);
+            let decompressor = self.compressor.as_ref().unwrap().decompressor();
+            decompressor.decompress_into(data, buffer);
         }
     }
 
     fn space_used_bytes(&self) -> usize {
-        self.data.len() + self.get_decompressor().space_used_bytes()
+        let decompressor = self.compressor.as_ref().unwrap().decompressor();
+        self.data.len() + decompressor.space_used_bytes()
     }
 
     fn name(&self) -> &str {
         "FSST"
-    }
-}
-
-impl FSSTCompressor {
-    fn get_decompressor(&self) -> fsst::Decompressor {
-        self.compressor.as_ref().unwrap().decompressor()
     }
 }
 

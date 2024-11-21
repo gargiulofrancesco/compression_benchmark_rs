@@ -1,9 +1,9 @@
-use random_access_string_compression::compressor::bpe::BPECompressor;
-use random_access_string_compression::compressor::lz4::LZ4Compressor;
-use random_access_string_compression::compressor::copy::CopyCompressor;
-use random_access_string_compression::compressor::fsst::FSSTCompressor;
-use random_access_string_compression::dataset::{process_dataset, Dataset};
-use random_access_string_compression::compressor::Compressor;
+use compression_benchmark_rs::compressor::bpe4::BPECompressor;
+use compression_benchmark_rs::compressor::lz4::LZ4Compressor;
+use compression_benchmark_rs::compressor::copy::CopyCompressor;
+use compression_benchmark_rs::compressor::fsst::FSSTCompressor;
+use compression_benchmark_rs::dataset::{process_dataset, Dataset};
+use compression_benchmark_rs::compressor::Compressor;
 use std::env;
 use std::fs;
 use std::path::Path;

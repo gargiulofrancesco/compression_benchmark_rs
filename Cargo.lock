@@ -30,6 +30,19 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "baf1de4339761588bc0619e3cbc0120ee582ebb74b53b4efbf79117bd2da40fd"
 
 [[package]]
+name = "compression_benchmark_rs"
+version = "0.1.0"
+dependencies = [
+ "fsst-rs",
+ "lz4",
+ "prettytable",
+ "rand",
+ "rustc-hash",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "csv"
 version = "1.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -232,19 +245,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ec0be4795e2f6a28069bec0b5ff3e2ac9bafc99e6a9a7dc3547996c5c816922c"
 dependencies = [
  "getrandom",
-]
-
-[[package]]
-name = "random_access_string_compression"
-version = "0.1.0"
-dependencies = [
- "fsst-rs",
- "lz4",
- "prettytable",
- "rand",
- "rustc-hash",
- "serde",
- "serde_json",
 ]
 
 [[package]]

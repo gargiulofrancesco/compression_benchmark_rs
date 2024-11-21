@@ -1,14 +1,16 @@
+// BPE v4: explicitly saves token IDs using 2 bytes, with a maximum entry length of 16 bytes in the dictionary.
+
 use super::Compressor;
 use crate::bit_vector::BitVector;
+use std::arch::x86_64::*;
 use std::collections::BinaryHeap;
-use std::mem;
 use rustc_hash::{FxHashMap, FxHashSet};
 
 pub struct BPECompressor {
-    data: Vec<u8>,                          // Store the compressed data as bytes
-    item_end_positions: Vec<usize>,         // Store the end positions of each compressed item
-    dictionary: Vec<u8>,                    // Store the dictionary
-    dictionary_end_positions: Vec<u32>,     // Store the end positions of each element in the dictionary
+    data: Vec<u16>,                             // Store the compressed data as bytes
+    item_end_positions: Vec<usize>,             // Store the end positions of each compressed item
+    dictionary: Vec<u8>,                        // Store the dictionary
+    dictionary_end_positions: Vec<u32>,         // Store the end positions of each element in the dictionary
 }
 
 impl Compressor for BPECompressor {
@@ -37,97 +39,74 @@ impl Compressor for BPECompressor {
         let mut start = 0;
         self.item_end_positions.push(0);
         for end in compressed_strings_separators {
-            for &token_id in compressed_strings[start..end].iter() {  
-                assert!(token_id <= (u16::MAX >> 1));
-                if token_id < 128 {
-                    self.data.push(token_id as u8);
-                }
-                else {
-                    let top_bits = ((token_id >> 8) as u8) | 0x80;
-                    let bottom_bits = (token_id & 0xFF) as u8;
-                    self.data.push(top_bits);
-                    self.data.push(bottom_bits);
-                }
-            }
-            
+            for &token_id in compressed_strings[start..end].iter() {
+                self.data.push(token_id);
+            } 
             self.item_end_positions.push(self.data.len());
             start = end;
         }
     }
 
     fn decompress(&self, buffer: &mut Vec<u8>) {
-        let mut pos = 0;
-        
-        // Assume the buffer is preallocated to the necessary size.
         unsafe {
-            // Use raw pointers to avoid bounds checking on `self.data` and `self.dictionary`
             let data_ptr = self.data.as_ptr();
             let dict_ptr = self.dictionary.as_ptr();
             let end_positions_ptr = self.dictionary_end_positions.as_ptr();
-            
-            while pos < self.data.len() {
-                let mut token_id = *data_ptr.add(pos) as u16;
-                pos += 1;
     
-                if token_id > 127 {
-                    token_id = (token_id & 0x7F) << 8 | *data_ptr.add(pos) as u16;
-                    pos += 1;
-                }
-    
+            for i in 0..self.data.len() {
+                let token_id = *data_ptr.add(i) as usize;
+                
                 // Access dictionary positions using raw pointers
-                let dic_start = *end_positions_ptr.add(token_id as usize) as usize;
-                let dic_end = *end_positions_ptr.add(token_id as usize + 1) as usize;
-                let length = dic_end - dic_start;
-    
-                // Directly copy data from dictionary to buffer
-                let src_ptr = dict_ptr.add(dic_start);
-                let dst_ptr = buffer.as_mut_ptr().add(buffer.len());
-                std::ptr::copy_nonoverlapping(src_ptr, dst_ptr, length);
-    
-                // Update buffer length manually
+                let dict_start = *end_positions_ptr.add(token_id as usize) as usize;
+                let dict_end = *end_positions_ptr.add(token_id as usize + 1) as usize;
+                let length = dict_end - dict_start;
+
+                // Use SIMD to copy 16 bytes (128 bits) at a time to the buffer
+                let src_ptr = dict_ptr.add(dict_start) as *const __m128i;
+                let dst_ptr = buffer.as_mut_ptr().add(buffer.len()) as *mut __m128i;
+
+                // Load 16 bytes from dictionary and store into buffer
+                let data = _mm_loadu_si128(src_ptr);
+                _mm_storeu_si128(dst_ptr, data);
+
+                // Update buffer length for each entry (assuming fixed 16 bytes here)
                 buffer.set_len(buffer.len() + length);
             }
         }
     }
 
     fn get_item_at(&self, index: usize, buffer: &mut Vec<u8>) {
-        let mut pos = self.item_end_positions[index];
-        let end = self.item_end_positions[index + 1];
-    
         unsafe {
+            let start = *self.item_end_positions.as_ptr().add(index);
+            let end = *self.item_end_positions.as_ptr().add(index + 1);
+
             // Set up raw pointers to data structures to avoid bounds checking
             let data_ptr = self.data.as_ptr();
             let dict_ptr = self.dictionary.as_ptr();
             let end_positions_ptr = self.dictionary_end_positions.as_ptr();
-    
-            while pos < end {
-                // Retrieve token ID, handling potential multi-byte encoding
-                let mut token_id = *data_ptr.add(pos) as u16;
-                pos += 1;
-    
-                if token_id > 127 {
-                    token_id = (token_id & 0x7F) << 8 | *data_ptr.add(pos) as u16;
-                    pos += 1;
-                }
-    
-                // Access dictionary start and end positions
-                let dic_start = *end_positions_ptr.add(token_id as usize) as usize;
-                let dic_end = *end_positions_ptr.add(token_id as usize + 1) as usize;
-                let length = dic_end - dic_start;
-    
-                // Copy dictionary data directly into the buffer
-                let src_ptr = dict_ptr.add(dic_start);
-                let dest_ptr = buffer.as_mut_ptr().add(buffer.len());
-                std::ptr::copy_nonoverlapping(src_ptr, dest_ptr, length);
-    
-                // Update buffer length manually to include new data
+
+            for pos in start..end {
+                let token_id = *data_ptr.add(pos) as usize;
+
+                let dict_start = *end_positions_ptr.add(token_id) as usize;
+                let length = *end_positions_ptr.add(1 + token_id) as usize - dict_start;
+
+                // Use SIMD to copy 16 bytes (128 bits) at a time to the buffer
+                let src_ptr = dict_ptr.add(dict_start) as *const __m128i;
+                let dst_ptr = buffer.as_mut_ptr().add(buffer.len()) as *mut __m128i;
+
+                // Load 16 bytes from dictionary and store into buffer
+                let data = _mm_loadu_si128(src_ptr);
+                _mm_storeu_si128(dst_ptr, data);
+
+                // Update buffer length for each entry (assuming fixed 16 bytes here)
                 buffer.set_len(buffer.len() + length);
             }
         }
     }
 
     fn space_used_bytes(&self) -> usize {
-        self.data.len() + self.dictionary.len() + (self.dictionary_end_positions.len() * mem::size_of::<u32>())
+        (2 * self.data.len()) + self.dictionary.len() + (self.dictionary_end_positions.len() * 4)
     }
 
     fn name(&self) -> &str {
@@ -180,7 +159,7 @@ fn get_or_insert_token(map: &mut FxHashMap<Vec<u8>, u16>, slice: &[u8], next_id:
 }
 
 /// Initializes pair positions based on the tokenization provided by a `BitVector`
-pub fn initialize_pair_positions(bv: &BitVector, token_ids: &[u16], end_positions_set: &FxHashSet<usize>) -> (FxHashMap<(u16, u16), FxHashSet<u32>>, BinaryHeap<(u32, (u16, u16))>) {
+fn initialize_pair_positions(bv: &BitVector, token_ids: &[u16], end_positions_set: &FxHashSet<usize>) -> (FxHashMap<(u16, u16), FxHashSet<u32>>, BinaryHeap<(u32, (u16, u16))>) {
     let mut pair_pos: FxHashMap<(u16, u16), FxHashSet<u32>> = FxHashMap::default();
     let mut max_freq: BinaryHeap<(u32, (u16, u16))> = BinaryHeap::new();
     
@@ -210,7 +189,7 @@ pub fn initialize_pair_positions(bv: &BitVector, token_ids: &[u16], end_position
     (pair_pos, max_freq)
 }
 
-pub fn merge (
+fn merge (
     bv: &mut BitVector, 
     token_ids: &mut [u16], 
     end_positions_set: &FxHashSet<usize>,
@@ -218,7 +197,7 @@ pub fn merge (
     max_freq: &mut BinaryHeap<(u32, (u16, u16))>,
     next_id: &mut u16,
 ) {
-    while *next_id <= (u16::MAX >> 1) {
+    while *next_id < u16::MAX {
         // Store updated pairs to minimize insertions in the max_freq heap
         let mut updated_pairs: FxHashSet<(u16, u16)> = FxHashSet::default();
 
@@ -226,9 +205,17 @@ pub fn merge (
         let (freq, (t1, t2)) = loop {
             let (freq, (t1, t2)) = max_freq.pop().unwrap();
             let current_freq = pair_pos.get(&(t1, t2)).unwrap().len() as u32;
-            
+
             // Check if the frequency is up-to-date
             if freq == current_freq {
+                let t1_pos = *pair_pos.get(&(t1, t2)).unwrap().iter().next().unwrap() as usize;
+                let t2_pos = bv.next_one(t1_pos).unwrap();
+                let t3_pos = bv.next_one(t2_pos).unwrap_or(bv.len());
+                let length = t3_pos - t1_pos;
+                if length > 16 {
+                    continue;
+                }
+
                 break (freq, (t1, t2));  // Exit loop with valid pair
             }
         };
