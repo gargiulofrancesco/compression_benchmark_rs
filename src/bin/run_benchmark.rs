@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::env;
 use std::fs;
 use std::path::Path;
 use std::time::Instant;
@@ -168,9 +169,25 @@ fn initialize_compressors(data_size: usize, n_elements: usize) -> Vec<Compressor
 }
 
 fn main() {
-    let dir = Path::new("../../data/samples");
-    let mut results: Vec<BenchmarkResult> = Vec::new();
+    // Get the command-line arguments
+    let args: Vec<String> = env::args().collect();
 
+    // Check if a directory argument is provided
+    if args.len() < 2 {
+        eprintln!("Error: Missing directory argument. Usage is: {} <directory>", args[0]);
+        std::process::exit(1);
+    }
+
+    let directory = &args[1];
+
+    // Check if the path is a valid directory
+    let dir = Path::new(directory);
+    if !dir.exists() || !dir.is_dir() {
+        eprintln!("Error: {} is not a valid directory.", directory);
+        std::process::exit(1);
+    }
+    
+    let mut results: Vec<BenchmarkResult> = Vec::new();
     let selectivity = 0.15;  // Selectivity of random access queries
     let seed = 42;  // Seed for the random number generator
 

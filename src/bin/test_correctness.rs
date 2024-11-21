@@ -4,6 +4,7 @@ use random_access_string_compression::compressor::copy::CopyCompressor;
 use random_access_string_compression::compressor::fsst::FSSTCompressor;
 use random_access_string_compression::dataset::{process_dataset, Dataset};
 use random_access_string_compression::compressor::Compressor;
+use std::env;
 use std::fs;
 use std::path::Path;
 
@@ -47,7 +48,23 @@ fn initialize_compressors(data_size: usize, n_elements: usize) -> Vec<Compressor
 }
 
 fn main() {
-    let dir = Path::new("../../data/samples");
+    // Get the command-line arguments
+    let args: Vec<String> = env::args().collect();
+
+    // Check if a directory argument is provided
+    if args.len() < 2 {
+        eprintln!("Error: Missing directory argument. Usage is: {} <directory>", args[0]);
+        std::process::exit(1);
+    }
+
+    let directory = &args[1];
+
+    // Check if the path is a valid directory
+    let dir = Path::new(directory);
+    if !dir.exists() || !dir.is_dir() {
+        eprintln!("Error: {} is not a valid directory.", directory);
+        std::process::exit(1);
+    }
 
     // Load all datasets from the specified directory
     for entry in fs::read_dir(dir).unwrap() {
