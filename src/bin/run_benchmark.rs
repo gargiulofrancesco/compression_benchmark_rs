@@ -1,9 +1,9 @@
-use compression_benchmark_rs::compressor::bpe4::BPECompressor;
-use compression_benchmark_rs::{compressor::Compressor, dataset::process_dataset};
-use compression_benchmark_rs::compressor::lz4::LZ4Compressor;
 use compression_benchmark_rs::compressor::copy::CopyCompressor;
 use compression_benchmark_rs::compressor::fsst::FSSTCompressor;
-use compression_benchmark_rs::dataset::Dataset;
+use compression_benchmark_rs::compressor::lz4::LZ4Compressor;
+use compression_benchmark_rs::compressor::snappy::SnappyCompressor;
+use compression_benchmark_rs::compressor::bpe4::BPECompressor;
+use compression_benchmark_rs::{compressor::Compressor, dataset::process_dataset, dataset::Dataset};
 use std::collections::HashMap;
 use std::env;
 use std::fs;
@@ -154,17 +154,19 @@ fn generate_queries(n_elements: usize, selectivity: f64, seed: u64) -> Vec<usize
 
 enum CompressorEnum {
     Copy(CopyCompressor),
-    LZ4(LZ4Compressor),
-    BPE(BPECompressor),
     FSST(FSSTCompressor),
+    LZ4(LZ4Compressor),
+    Snappy(SnappyCompressor),
+    BPE(BPECompressor),   
 }
 
 fn initialize_compressors(data_size: usize, n_elements: usize) -> Vec<CompressorEnum> {
     vec![
         CompressorEnum::Copy(CopyCompressor::new(data_size, n_elements)),
-        CompressorEnum::LZ4(LZ4Compressor::new(data_size, n_elements)),
-        CompressorEnum::BPE(BPECompressor::new(data_size, n_elements)),
         CompressorEnum::FSST(FSSTCompressor::new(data_size, n_elements)),
+        CompressorEnum::LZ4(LZ4Compressor::new(data_size, n_elements)),
+        CompressorEnum::Snappy(SnappyCompressor::new(data_size, n_elements)),
+        CompressorEnum::BPE(BPECompressor::new(data_size, n_elements)),
     ]
 }
 
@@ -212,15 +214,19 @@ fn main() {
                         let result = benchmark(compressor, dataset_name.clone(), &data, &end_positions, &queries);
                         results.push(result);
                     }
+                    CompressorEnum::FSST(compressor) => {
+                        let result = benchmark(compressor, dataset_name.clone(), &data, &end_positions, &queries);
+                        results.push(result);
+                    }
                     CompressorEnum::LZ4(compressor) => {
                         let result = benchmark(compressor, dataset_name.clone(), &data, &end_positions, &queries);
                         results.push(result);
                     }
-                    CompressorEnum::BPE(compressor) => {
+                    CompressorEnum::Snappy(compressor) => {
                         let result = benchmark(compressor, dataset_name.clone(), &data, &end_positions, &queries);
                         results.push(result);
                     }
-                    CompressorEnum::FSST(compressor) => {
+                    CompressorEnum::BPE(compressor) => {
                         let result = benchmark(compressor, dataset_name.clone(), &data, &end_positions, &queries);
                         results.push(result);
                     }

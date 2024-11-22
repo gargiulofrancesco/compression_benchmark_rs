@@ -1,14 +1,22 @@
-pub mod lz4;
 pub mod copy;
-pub mod bpe4;
 pub mod fsst;
+pub mod lz4;
+pub mod snappy;
+pub mod bpe4;
+
+const DEFAULT_BLOCK_SIZE: usize = 64 * 1024;  // 64 KB
+
+pub struct BlockMetadata {
+    pub end_position: usize,        // End position of this block in compressed data
+    pub num_items_psum: usize,      // Cumulative number of items up to this block
+    pub uncompressed_size: i32,     // Uncompressed size of this block
+}
 
 pub trait Compressor {
     /// Creates a new compressor allocating memory for the specified data size and number of elements.
     fn new(data_size: usize, n_elements: usize) -> Self;
 
     /// Compresses the provided data and stores it internally.
-    /// The end_positions slice contains the end positions of each item in the data.
     fn compress(&mut self, data: &[u8], end_positions: &[usize]);
 
     /// Decompresses the internally stored data and returns it.
@@ -25,96 +33,161 @@ pub trait Compressor {
 }
 
 pub trait BlockCompressor: Compressor {
-    /// Compresses a single block of data.
-    fn compress_block(&mut self, block: &[u8], num_items: usize);
-
-    /// Decompresses a single block of data into the provided buffer.
-    fn decompress_block(&self, block_index: usize, buffer: &mut Vec<u8>);
+    /// Returns the block size (in bytes) used by this compressor.
+    fn get_block_size(&self) -> usize;
 
     /// Sets the block size used by this compressor.
     fn set_block_size(&mut self, block_size: usize);
 
-    /// Returns the block size (in bytes) used by this compressor.
-    fn get_block_size(&self) -> usize;
+    /// Get the slice of compressed data.
+    fn get_compressed_data(&self) -> &[u8];
 
-    /// Returns the number of blocks stored by the compressor.
-    fn get_num_blocks(&self) -> usize;
+    /// Returns the metadata for all blocks.
+    fn get_blocks_metadata(&self) -> &Vec<BlockMetadata>;
 
-    /// Returns the block index that contains a given item.
-    fn get_block_index(&self, item_index: usize) -> usize;
+    /// Returns mutable metadata for all blocks.
+    fn get_blocks_metadata_mut(&mut self) -> &mut Vec<BlockMetadata>;
 
-    /// Returns the buffer used to store the compressed data of a block.
-    fn get_block_buffer(&self) -> Vec<u8>;
+    /// Get the slice of item end positions.
+    fn get_item_end_positions(&self) -> &[usize];
 
-    /// Returns the start and end indices of the item at the specified index within a block.
-    fn get_item_delimiters(&self, block_index: usize, item_index: usize) -> (usize, usize);
+    /// Compresses a single block of data, returns the number of bytes of the compressed block.
+    fn compress_block(&mut self, block: &[u8]) -> usize;
 
-    /// Compress the data in blocks according to the block size.
+    /// Decompresses a single block of data into the provided buffer.
+    fn decompress_block(&self, compressed_data: &[u8], uncompressed_size: usize, buffer: &mut Vec<u8>);
+
+    /// Get the number of blocks.
+    #[inline(always)]
+    fn get_num_blocks(&self) -> usize {
+        self.get_blocks_metadata().len()
+    }
+    
     fn compress(&mut self, data: &[u8], end_positions: &[usize]) {
         let block_size = self.get_block_size();
-        let mut block_start = 0;  // Start of the current block
-        let mut num_items_in_block = 0;  // Number of items in the current block
-        let mut current_block_size = 0;  // Total size of the current block
-        let mut item_start = 0;  // Start of the current item
+        let mut block_start = 0;            // Start of the current block
+        let mut num_items_in_block = 0;     // Number of items in the current block
+        let mut current_block_size = 0;     // Total size of the current block
+        let mut item_start = 0;             // Start of the current item
 
         for &item_end in end_positions {
-            let sitem_size = item_end - item_start;
-        
-            // If adding this item exceeds the block size, compress the current block
-            if current_block_size + sitem_size > block_size {
-                // Compress the block from block_start up to item_start
-                unsafe {
-                    self.compress_block(data.get_unchecked(block_start..item_start), num_items_in_block);
-                }
+            let item_size = item_end - item_start;
+            
+            if current_block_size + item_size > block_size {
+                let block = &data[block_start..item_start];
+                let compressed_block_size = self.compress_block(block);
 
-                // Reset block parameters for the next block
-                block_start = item_start;  // Start the next block from this item
+                let end_position = self.get_blocks_metadata().last().map_or(0, |m| m.end_position)
+                    + compressed_block_size;
+                let num_items_psum = num_items_in_block + self.get_blocks_metadata().last()
+                    .map_or(0, |meta| meta.num_items_psum);  // Cumulative number of items
+
+                self.get_blocks_metadata_mut().push(BlockMetadata {
+                    end_position,
+                    num_items_psum,
+                    uncompressed_size: block.len() as i32,
+                });
+
+                block_start = item_start;
                 num_items_in_block = 0;
                 current_block_size = 0;
             }
 
-            // Add the current item to the current block
-            current_block_size += sitem_size;
+            current_block_size += item_size;
             num_items_in_block += 1;
-
-            // Move start to the end of the current item
             item_start = item_end;
         }
 
-        // Compress the last block, if there is any remaining data
         if num_items_in_block > 0 {
-            unsafe {
-                self.compress_block(data.get_unchecked(block_start..item_start), num_items_in_block);
-            }
+            let block = &data[block_start..item_start];
+            let compressed_block_size = self.compress_block(block);
+
+            let end_position = self.get_blocks_metadata().last().map_or(0, |m| m.end_position)
+                + compressed_block_size;
+            let num_items_psum = num_items_in_block + self.get_blocks_metadata().last()
+                .map_or(0, |meta| meta.num_items_psum);  // Cumulative number of items
+
+            self.get_blocks_metadata_mut().push(BlockMetadata {
+                end_position,
+                num_items_psum,
+                uncompressed_size: block.len() as i32,
+            });
         }
     }
 
     /// Decompress all blocks.
     fn decompress(&self, buffer: &mut Vec<u8>) {
-        for i in 0..self.get_num_blocks() {
-            self.decompress_block(i, buffer);
+        for (i, block_metadata) in self.get_blocks_metadata().iter().enumerate() {
+            let start = if i == 0 { 0 } else { self.get_blocks_metadata()[i - 1].end_position };
+            let end = block_metadata.end_position;
+
+            let compressed_data = &self.get_compressed_data()[start..end];
+            self.decompress_block(compressed_data, block_metadata.uncompressed_size as usize, buffer);
         }
     }
 
-    /// Retrieves an item by finding the correct block and decompressing only what is needed.
+    #[inline(always)]
     fn get_item_at(&self, index: usize, buffer: &mut Vec<u8>) {
-        // Find the block that contains the item
+        // println!("index: {}, total number of items: {}", index, self.get_blocks_metadata().last().unwrap().num_items_psum);
         let block_index = self.get_block_index(index);
+        let block_metadata = &self.get_blocks_metadata()[block_index];
 
-        // Decompress the block containing the item
-        let mut block_buffer = self.get_block_buffer();
-        self.decompress_block(block_index, &mut block_buffer);
+        let block_start = if block_index == 0 {
+            0
+        } else {
+            self.get_blocks_metadata()[block_index - 1].end_position
+        };
+        let block_end = block_metadata.end_position;
 
-        // Find the item delimiters within the block
-        let (start, end) = self.get_item_delimiters(block_index, index);
+        let compressed_data = &self.get_compressed_data()[block_start..block_end];
+        let mut uncompressed_data = Vec::with_capacity(block_metadata.uncompressed_size as usize);
+        self.decompress_block(compressed_data, block_metadata.uncompressed_size as usize, &mut uncompressed_data);
 
-        // Retrieve the item starting at block_offset using an optimized approach
-        unsafe {
-            // Get a slice of the item without bounds checking
-            let item_slice = block_buffer.get_unchecked(start..end);
+        let (item_start, item_end) = self.get_item_delimiters(block_index, index);
+        buffer.extend_from_slice(&uncompressed_data[item_start..item_end]);
+    }
 
-            // Extend the buffer with the item slice
-            buffer.extend_from_slice(item_slice);
-        }
+    /// Returns the block index for a given item index.
+    #[inline(always)]
+    fn get_block_index(&self, item_index: usize) -> usize {        
+        self.get_blocks_metadata()
+            .binary_search_by(|block| {
+                if item_index < block.num_items_psum {
+                    std::cmp::Ordering::Greater
+                } else {
+                    std::cmp::Ordering::Less
+                }
+            })
+            .unwrap_or_else(|idx| idx)
+    }
+
+    /// Get the item delimiters (start and end offsets) in a block.
+    #[inline(always)]
+    fn get_item_delimiters(&self, block_index: usize, item_index: usize) -> (usize, usize) {
+        debug_assert!(block_index < self.get_num_blocks());
+
+        let blocks_metadata = self.get_blocks_metadata();
+        let item_positions = self.get_item_end_positions();
+
+        let first_item_index = if block_index == 0 {
+            0
+        } else {
+            blocks_metadata[block_index - 1].num_items_psum
+        };
+
+        let start = if item_index > 0 {
+            item_positions[item_index - 1]
+        } else {
+            0
+        };
+
+        let adjustment = if first_item_index > 0 {
+            item_positions[first_item_index - 1]
+        } else {
+            0
+        };
+
+        let end = item_positions[item_index];
+        (start - adjustment, end - adjustment)
     }
 }

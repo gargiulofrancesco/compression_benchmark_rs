@@ -1,9 +1,9 @@
-use compression_benchmark_rs::compressor::bpe4::BPECompressor;
-use compression_benchmark_rs::compressor::lz4::LZ4Compressor;
 use compression_benchmark_rs::compressor::copy::CopyCompressor;
 use compression_benchmark_rs::compressor::fsst::FSSTCompressor;
-use compression_benchmark_rs::dataset::{process_dataset, Dataset};
-use compression_benchmark_rs::compressor::Compressor;
+use compression_benchmark_rs::compressor::lz4::LZ4Compressor;
+use compression_benchmark_rs::compressor::snappy::SnappyCompressor;
+use compression_benchmark_rs::compressor::bpe4::BPECompressor;
+use compression_benchmark_rs::{compressor::Compressor, dataset::process_dataset, dataset::Dataset};
 use std::env;
 use std::fs;
 use std::path::Path;
@@ -33,17 +33,19 @@ pub fn test<T: Compressor>(compressor: &mut T, data: &[u8], end_positions: &[usi
 
 enum CompressorEnum {
     Copy(CopyCompressor),
-    LZ4(LZ4Compressor),
-    BPE(BPECompressor),
     FSST(FSSTCompressor),
+    LZ4(LZ4Compressor),
+    Snappy(SnappyCompressor),
+    BPE(BPECompressor),   
 }
 
 fn initialize_compressors(data_size: usize, n_elements: usize) -> Vec<CompressorEnum> {
     vec![
         CompressorEnum::Copy(CopyCompressor::new(data_size, n_elements)),
-        CompressorEnum::LZ4(LZ4Compressor::new(data_size, n_elements)),
-        CompressorEnum::BPE(BPECompressor::new(data_size, n_elements)),
         CompressorEnum::FSST(FSSTCompressor::new(data_size, n_elements)),
+        CompressorEnum::LZ4(LZ4Compressor::new(data_size, n_elements)),
+        CompressorEnum::Snappy(SnappyCompressor::new(data_size, n_elements)),
+        CompressorEnum::BPE(BPECompressor::new(data_size, n_elements)),
     ]
 }
 
@@ -87,15 +89,18 @@ fn main() {
                     CompressorEnum::Copy(compressor) => {
                         test(compressor, &data, &end_positions);
                     }
+                    CompressorEnum::FSST(compressor) => {
+                        test(compressor, &data, &end_positions);
+                    }
                     CompressorEnum::LZ4(compressor) => {
+                        test(compressor, &data, &end_positions);
+                    }
+                    CompressorEnum::Snappy(compressor) => {
                         test(compressor, &data, &end_positions);
                     }
                     CompressorEnum::BPE(compressor) => {
                         test(compressor, &data, &end_positions);
-                    }
-                    CompressorEnum::FSST(compressor) => {
-                        test(compressor, &data, &end_positions);
-                    }
+                    }                    
                 }
             }
         }
