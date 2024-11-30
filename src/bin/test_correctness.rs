@@ -2,6 +2,7 @@ use compression_benchmark_rs::compressor::copy::CopyCompressor;
 use compression_benchmark_rs::compressor::fsst::FSSTCompressor;
 use compression_benchmark_rs::compressor::lz4::LZ4Compressor;
 use compression_benchmark_rs::compressor::snappy::SnappyCompressor;
+use compression_benchmark_rs::compressor::zstd::ZstdCompressor;
 use compression_benchmark_rs::compressor::bpe4::BPECompressor;
 use compression_benchmark_rs::{compressor::Compressor, dataset::process_dataset, dataset::Dataset};
 use std::env;
@@ -36,6 +37,7 @@ enum CompressorEnum {
     FSST(FSSTCompressor),
     LZ4(LZ4Compressor),
     Snappy(SnappyCompressor),
+    Zstd(ZstdCompressor),
     BPE(BPECompressor),   
 }
 
@@ -45,6 +47,7 @@ fn initialize_compressors(data_size: usize, n_elements: usize) -> Vec<Compressor
         CompressorEnum::FSST(FSSTCompressor::new(data_size, n_elements)),
         CompressorEnum::LZ4(LZ4Compressor::new(data_size, n_elements)),
         CompressorEnum::Snappy(SnappyCompressor::new(data_size, n_elements)),
+        CompressorEnum::Zstd(ZstdCompressor::new(data_size, n_elements)),
         CompressorEnum::BPE(BPECompressor::new(data_size, n_elements)),
     ]
 }
@@ -96,6 +99,9 @@ fn main() {
                         test(compressor, &data, &end_positions);
                     }
                     CompressorEnum::Snappy(compressor) => {
+                        test(compressor, &data, &end_positions);
+                    }
+                    CompressorEnum::Zstd(compressor) => {
                         test(compressor, &data, &end_positions);
                     }
                     CompressorEnum::BPE(compressor) => {

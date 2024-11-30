@@ -1,13 +1,14 @@
 use crate::compressor::Compressor;
 use super::{BlockCompressor, BlockMetadata, DEFAULT_BLOCK_SIZE};
 use std::mem;
-use lz4::block;
+use lz4::block::{self, CompressionMode};
 
 pub struct LZ4Compressor {
-    block_size: usize,                      // Maximum size of each block (in bytes)
-    data: Vec<u8>,                          // Store compressed blocks
-    blocks_metadata: Vec<BlockMetadata>,    // Metadata for each block
-    item_end_positions: Vec<usize>,         // End positions of each item in the original data
+    block_size: usize,                          // Maximum size of each block (in bytes)
+    data: Vec<u8>,                              // Store compressed blocks
+    blocks_metadata: Vec<BlockMetadata>,        // Metadata for each block
+    item_end_positions: Vec<usize>,             // End positions of each item in the original data
+    compression_mode: Option<CompressionMode>,  // DEFAULT, HIGH COMPRESSION (1-16), FAST
 }
 
 impl Compressor for LZ4Compressor {
@@ -17,6 +18,7 @@ impl Compressor for LZ4Compressor {
             data: Vec::with_capacity(data_size),
             blocks_metadata: Vec::with_capacity(data_size / DEFAULT_BLOCK_SIZE),
             item_end_positions: Vec::with_capacity(n_elements),
+            compression_mode: Some(CompressionMode::HIGHCOMPRESSION(16)),
         }
     }
 
@@ -66,8 +68,8 @@ impl BlockCompressor for LZ4Compressor {
             // Create a mutable slice of `self.data` starting from the current size
             let buffer_slice = self.data.get_unchecked_mut(current_size..current_size + block_len);
             
-            // Compress the block into the buffer slice
-            let compressed_buffer_size = block::compress_to_buffer(block, None, false, buffer_slice).unwrap();
+            // Compress the block into the buffer slice           
+            let compressed_buffer_size = block::compress_to_buffer(block, self.compression_mode, false, buffer_slice).unwrap();
             
             // Adjust the length of `self.data` to include only the actual compressed data
             self.data.set_len(current_size + compressed_buffer_size);
@@ -109,5 +111,11 @@ impl BlockCompressor for LZ4Compressor {
 
     fn get_item_end_positions(&self) -> &[usize] {
         &self.item_end_positions
+    }
+}
+
+impl LZ4Compressor {
+    pub fn set_compression_mode(&mut self, mode: CompressionMode) {
+        self.compression_mode = Some(mode);
     }
 }

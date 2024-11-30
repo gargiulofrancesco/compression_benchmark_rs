@@ -2,6 +2,7 @@ use compression_benchmark_rs::compressor::copy::CopyCompressor;
 use compression_benchmark_rs::compressor::fsst::FSSTCompressor;
 use compression_benchmark_rs::compressor::lz4::LZ4Compressor;
 use compression_benchmark_rs::compressor::snappy::SnappyCompressor;
+use compression_benchmark_rs::compressor::zstd::ZstdCompressor;
 use compression_benchmark_rs::compressor::bpe4::BPECompressor;
 use compression_benchmark_rs::{compressor::Compressor, dataset::process_dataset, dataset::Dataset};
 use std::collections::HashMap;
@@ -157,6 +158,7 @@ enum CompressorEnum {
     FSST(FSSTCompressor),
     LZ4(LZ4Compressor),
     Snappy(SnappyCompressor),
+    Zstd(ZstdCompressor),
     BPE(BPECompressor),   
 }
 
@@ -166,6 +168,7 @@ fn initialize_compressors(data_size: usize, n_elements: usize) -> Vec<Compressor
         CompressorEnum::FSST(FSSTCompressor::new(data_size, n_elements)),
         CompressorEnum::LZ4(LZ4Compressor::new(data_size, n_elements)),
         CompressorEnum::Snappy(SnappyCompressor::new(data_size, n_elements)),
+        CompressorEnum::Zstd(ZstdCompressor::new(data_size, n_elements)),
         CompressorEnum::BPE(BPECompressor::new(data_size, n_elements)),
     ]
 }
@@ -190,7 +193,7 @@ fn main() {
     }
     
     let mut results: Vec<BenchmarkResult> = Vec::new();
-    let selectivity = 0.15;  // Selectivity of random access queries
+    let selectivity = 0.02;  // Selectivity of random access queries
     let seed = 42;  // Seed for the random number generator
 
     // Load all datasets from the specified directory
@@ -223,6 +226,10 @@ fn main() {
                         results.push(result);
                     }
                     CompressorEnum::Snappy(compressor) => {
+                        let result = benchmark(compressor, dataset_name.clone(), &data, &end_positions, &queries);
+                        results.push(result);
+                    }
+                    CompressorEnum::Zstd(compressor) => {
                         let result = benchmark(compressor, dataset_name.clone(), &data, &end_positions, &queries);
                         results.push(result);
                     }

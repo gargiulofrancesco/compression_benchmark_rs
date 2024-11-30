@@ -2,9 +2,10 @@ pub mod copy;
 pub mod fsst;
 pub mod lz4;
 pub mod snappy;
+pub mod zstd;
 pub mod bpe4;
 
-const DEFAULT_BLOCK_SIZE: usize = 64 * 1024;  // 64 KB
+const DEFAULT_BLOCK_SIZE: usize = 64 * 1024;  // 64 KB (a good range is from 4 KB to 128 KB)
 
 pub struct BlockMetadata {
     pub end_position: usize,        // End position of this block in compressed data
