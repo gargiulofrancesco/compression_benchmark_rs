@@ -27,7 +27,7 @@ impl Compressor for CopyCompressor {
 
     /// Retrieves an item starting at the specified index.
     #[inline(always)]
-    fn get_item_at(&self, index: usize, buffer: &mut Vec<u8>) {
+    fn get_item_at(&mut self, index: usize, buffer: &mut Vec<u8>) {
         unsafe {
             let start = *self.end_positions.get_unchecked(index);
             let end = *self.end_positions.get_unchecked(index + 1);

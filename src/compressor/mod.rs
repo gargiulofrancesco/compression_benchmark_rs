@@ -24,7 +24,7 @@ pub trait Compressor {
     fn decompress(&self, buffer: &mut Vec<u8>);
 
     /// Retrieves an item at the specified index with minimal decompression.
-    fn get_item_at(&self, index: usize, buffer: &mut Vec<u8>);
+    fn get_item_at(&mut self, index: usize, buffer: &mut Vec<u8>);
 
     /// Returns the amount of space used by the compressed data in bytes.
     fn space_used_bytes(&self) -> usize;
@@ -57,6 +57,12 @@ pub trait BlockCompressor: Compressor {
 
     /// Decompresses a single block of data into the provided buffer.
     fn decompress_block(&self, compressed_data: &[u8], uncompressed_size: usize, buffer: &mut Vec<u8>);
+
+    /// Decompresses a single block of data into the internal cache.
+    fn decompress_block_to_cache(&mut self, block_index: usize);
+
+    /// Get the cache for the last decompressed block.
+    fn get_block_cache(&self) -> &[u8];
 
     /// Get the number of blocks.
     #[inline(always)]
@@ -128,24 +134,13 @@ pub trait BlockCompressor: Compressor {
     }
 
     #[inline(always)]
-    fn get_item_at(&self, index: usize, buffer: &mut Vec<u8>) {
-        // println!("index: {}, total number of items: {}", index, self.get_blocks_metadata().last().unwrap().num_items_psum);
+    fn get_item_at(&mut self, index: usize, buffer: &mut Vec<u8>) {
         let block_index = self.get_block_index(index);
-        let block_metadata = &self.get_blocks_metadata()[block_index];
-
-        let block_start = if block_index == 0 {
-            0
-        } else {
-            self.get_blocks_metadata()[block_index - 1].end_position
-        };
-        let block_end = block_metadata.end_position;
-
-        let compressed_data = &self.get_compressed_data()[block_start..block_end];
-        let mut uncompressed_data = Vec::with_capacity(block_metadata.uncompressed_size as usize);
-        self.decompress_block(compressed_data, block_metadata.uncompressed_size as usize, &mut uncompressed_data);
+        self.decompress_block_to_cache(block_index);
 
         let (item_start, item_end) = self.get_item_delimiters(block_index, index);
-        buffer.extend_from_slice(&uncompressed_data[item_start..item_end]);
+        let block_cache = self.get_block_cache();
+        buffer.extend_from_slice(&block_cache[item_start..item_end]);
     }
 
     /// Returns the block index for a given item index.

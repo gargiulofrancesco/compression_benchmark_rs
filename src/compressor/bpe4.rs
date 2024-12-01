@@ -75,7 +75,7 @@ impl Compressor for BPECompressor {
         }
     }
 
-    fn get_item_at(&self, index: usize, buffer: &mut Vec<u8>) {
+    fn get_item_at(&mut self, index: usize, buffer: &mut Vec<u8>) {
         unsafe {
             let start = *self.item_end_positions.as_ptr().add(index);
             let end = *self.item_end_positions.as_ptr().add(index + 1);

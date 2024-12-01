@@ -9,6 +9,8 @@ pub struct LZ4Compressor {
     blocks_metadata: Vec<BlockMetadata>,        // Metadata for each block
     item_end_positions: Vec<usize>,             // End positions of each item in the original data
     compression_mode: Option<CompressionMode>,  // DEFAULT, HIGH COMPRESSION (1-16), FAST
+    cache_index: Option<usize>,                 // Index of the block in cache
+    cache: Vec<u8>,                             // Cache for the last decompressed block
 }
 
 impl Compressor for LZ4Compressor {
@@ -19,6 +21,8 @@ impl Compressor for LZ4Compressor {
             blocks_metadata: Vec::with_capacity(data_size / DEFAULT_BLOCK_SIZE),
             item_end_positions: Vec::with_capacity(n_elements),
             compression_mode: Some(CompressionMode::HIGHCOMPRESSION(16)),
+            cache_index: None,
+            cache: Vec::with_capacity(DEFAULT_BLOCK_SIZE),
         }
     }
 
@@ -32,7 +36,7 @@ impl Compressor for LZ4Compressor {
     }
     
     #[inline(always)]
-    fn get_item_at(&self, index: usize, buffer: &mut Vec<u8>) {
+    fn get_item_at(&mut self, index: usize, buffer: &mut Vec<u8>) {
         BlockCompressor::get_item_at(self, index, buffer);
     }
 
@@ -93,22 +97,63 @@ impl BlockCompressor for LZ4Compressor {
         }
     }
 
+    #[inline(always)]
+    fn decompress_block_to_cache(&mut self, block_index: usize) {
+        if Some(block_index) == self.cache_index {
+            return;
+        }
+
+        let block_metadata = &self.blocks_metadata[block_index];
+        let block_start = if block_index == 0 {
+            0
+        } else {
+            self.blocks_metadata[block_index - 1].end_position
+        };
+        let block_end = block_metadata.end_position;
+
+        self.cache.clear();
+        let uncompressed_size = block_metadata.uncompressed_size as usize;
+        let compressed_data = &self.data[block_start..block_end];
+
+        unsafe {
+            self.cache.set_len(uncompressed_size);
+                
+            // Create a mutable slice of `self.data` starting from the current size
+            let buffer_slice = self.cache.get_unchecked_mut(0..uncompressed_size);
+    
+            // Decompress into the provided buffer
+            let _ = block::decompress_to_buffer(compressed_data, Some(uncompressed_size as i32), buffer_slice);
+        }
+
+        self.cache_index = Some(block_index);
+    }
+    
+    #[inline(always)]
+    fn get_block_cache(&self) -> &[u8] {
+        &self.cache
+    }
+
+    #[inline(always)]
     fn get_block_size(&self) -> usize {
         self.block_size
     }
 
+    #[inline(always)]
     fn get_compressed_data(&self) -> &[u8] {
         &self.data
     }
 
+    #[inline(always)]
     fn get_blocks_metadata(&self) -> &Vec<BlockMetadata> {
         &self.blocks_metadata
     }
 
+    #[inline(always)]
     fn get_blocks_metadata_mut(&mut self) -> &mut Vec<BlockMetadata> {
         &mut self.blocks_metadata
     }
 
+    #[inline(always)]
     fn get_item_end_positions(&self) -> &[usize] {
         &self.item_end_positions
     }
