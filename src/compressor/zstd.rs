@@ -129,22 +129,27 @@ impl BlockCompressor for ZstdCompressor {
         &self.cache
     }
 
+    #[inline(always)]
     fn get_block_size(&self) -> usize {
         self.block_size
     }
 
+    #[inline(always)]
     fn get_compressed_data(&self) -> &[u8] {
         &self.data
     }
 
+    #[inline(always)]
     fn get_blocks_metadata(&self) -> &Vec<BlockMetadata> {
         &self.blocks_metadata
     }
 
+    #[inline(always)]
     fn get_blocks_metadata_mut(&mut self) -> &mut Vec<BlockMetadata> {
         &mut self.blocks_metadata
     }
 
+    #[inline(always)]
     fn get_item_end_positions(&self) -> &[usize] {
         &self.item_end_positions
     }
