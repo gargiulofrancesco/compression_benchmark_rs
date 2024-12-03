@@ -9,29 +9,6 @@ use std::env;
 use std::fs;
 use std::path::Path;
 
-pub fn test<T: Compressor>(compressor: &mut T, data: &[u8], end_positions: &[usize]) {
-    let mut buffer: Vec<u8> = Vec::with_capacity(data.len() + 1024);  // Buffer for decompression
-
-    // Compression and Decompression Test
-    compressor.compress(&data, &end_positions);  // Compress the dataset
-    compressor.decompress(&mut buffer);  // Decompress the dataset
-    for (i, byte) in buffer.iter().enumerate() {
-        assert_eq!(data[i], *byte, 
-            "Decompressed data does not match original data at index {} for compressor: {}", i, compressor.name());
-    }
-
-    // Random Access Test
-    for query in 0..end_positions.len() {
-        buffer.clear();  // Clear the buffer for random access decompression
-        compressor.get_item_at(query, &mut buffer);  // The item obtained through random access
-        let start = *end_positions.get(query-1).unwrap_or(&0);
-        for (i, byte) in buffer.iter().enumerate() {
-            assert_eq!(data[start + i], *byte, 
-                "Random access at index {} failed for compressor: {}", query, compressor.name());
-        }
-    }
-}
-
 enum CompressorEnum {
     Copy(CopyCompressor),
     FSST(FSSTCompressor),
@@ -39,17 +16,6 @@ enum CompressorEnum {
     Snappy(SnappyCompressor),
     Zstd(ZstdCompressor),
     BPE(BPECompressor),   
-}
-
-fn initialize_compressors(data_size: usize, n_elements: usize) -> Vec<CompressorEnum> {
-    vec![
-        CompressorEnum::Copy(CopyCompressor::new(data_size, n_elements)),
-        CompressorEnum::FSST(FSSTCompressor::new(data_size, n_elements)),
-        CompressorEnum::LZ4(LZ4Compressor::new(data_size, n_elements)),
-        CompressorEnum::Snappy(SnappyCompressor::new(data_size, n_elements)),
-        CompressorEnum::Zstd(ZstdCompressor::new(data_size, n_elements)),
-        CompressorEnum::BPE(BPECompressor::new(data_size, n_elements)),
-    ]
 }
 
 fn main() {
@@ -82,7 +48,7 @@ fn main() {
             let dataset = Dataset::load(&path);            
             println!("Testing dataset: {}", dataset.dataset_name);
 
-            let (_, data, end_positions) = process_dataset(&dataset);
+            let (_, data, end_positions, _) = process_dataset(&dataset);
             let data_size = data.len();
             
             let mut compressors = initialize_compressors(data_size, end_positions.len());
@@ -109,6 +75,40 @@ fn main() {
                     }                    
                 }
             }
+        }
+    }
+}
+
+fn initialize_compressors(data_size: usize, n_elements: usize) -> Vec<CompressorEnum> {
+    vec![
+        CompressorEnum::Copy(CopyCompressor::new(data_size, n_elements)),
+        CompressorEnum::FSST(FSSTCompressor::new(data_size, n_elements)),
+        CompressorEnum::LZ4(LZ4Compressor::new(data_size, n_elements)),
+        CompressorEnum::Snappy(SnappyCompressor::new(data_size, n_elements)),
+        CompressorEnum::Zstd(ZstdCompressor::new(data_size, n_elements)),
+        CompressorEnum::BPE(BPECompressor::new(data_size, n_elements)),
+    ]
+}
+
+pub fn test<T: Compressor>(compressor: &mut T, data: &[u8], end_positions: &[usize]) {
+    let mut buffer: Vec<u8> = Vec::with_capacity(data.len() + 1024);  // Buffer for decompression
+
+    // Compression and Decompression Test
+    compressor.compress(&data, &end_positions);  // Compress the dataset
+    compressor.decompress(&mut buffer);  // Decompress the dataset
+    for (i, byte) in buffer.iter().enumerate() {
+        assert_eq!(data[i], *byte, 
+            "Decompressed data does not match original data at index {} for compressor: {}", i, compressor.name());
+    }
+
+    // Random Access Test
+    for query in 0..end_positions.len() {
+        buffer.clear();  // Clear the buffer for random access decompression
+        compressor.get_item_at(query, &mut buffer);  // The item obtained through random access
+        let start = *end_positions.get(query-1).unwrap_or(&0);
+        for (i, byte) in buffer.iter().enumerate() {
+            assert_eq!(data[start + i], *byte, 
+                "Random access at index {} failed for compressor: {}", query, compressor.name());
         }
     }
 }

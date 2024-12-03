@@ -18,6 +18,7 @@ pub struct BenchmarkResult {
 pub struct Dataset {
     pub dataset_name: String,
     pub data: Vec<String>,
+    pub queries: Vec<usize>,
 }
 
 impl Dataset {
@@ -54,9 +55,10 @@ pub fn load_datasets<P: AsRef<Path>>(dir: P) -> Vec<Dataset> {
 }
 
 /// Processes a dataset into a format that can be used by the compressors.
-pub fn process_dataset(dataset: &Dataset) -> (String, Vec<u8>, Vec<usize>) {
+pub fn process_dataset(dataset: &Dataset) -> (String, Vec<u8>, Vec<usize>, Vec<usize>) {
     let dataset_name = dataset.dataset_name.clone();
     let data: Vec<u8> = dataset.data.iter().flat_map(|s| s.as_bytes()).copied().collect();
+    let queries: Vec<usize> = dataset.queries.clone();
     let end_positions: Vec<usize> = dataset.data.iter()
         .scan(0, |state, s| {
             *state += s.len();
@@ -64,5 +66,5 @@ pub fn process_dataset(dataset: &Dataset) -> (String, Vec<u8>, Vec<usize>) {
         })
         .collect();
 
-    (dataset_name, data, end_positions)
+    (dataset_name, data, end_positions, queries)
 }

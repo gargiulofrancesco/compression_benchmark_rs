@@ -44,8 +44,7 @@ fn main() {
 
     // Load dataset
     let dataset = Dataset::load(dataset_path);
-    let (dataset_name, data, end_positions) = process_dataset(&dataset);
-    let queries = vec![0, 5, 10, 20, 50, 100];
+    let (dataset_name, data, end_positions, queries) = process_dataset(&dataset);
 
     // Initialize the compressor
     let mut compressor = match compressor_name.as_str() {
