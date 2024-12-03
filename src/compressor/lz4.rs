@@ -20,7 +20,7 @@ impl Compressor for LZ4Compressor {
             data: Vec::with_capacity(data_size),
             blocks_metadata: Vec::with_capacity(data_size / DEFAULT_BLOCK_SIZE),
             item_end_positions: Vec::with_capacity(n_elements),
-            compression_mode: Some(CompressionMode::HIGHCOMPRESSION(16)),
+            compression_mode: None, // Some(CompressionMode::HIGHCOMPRESSION(16)),
             cache_index: None,
             cache: Vec::with_capacity(DEFAULT_BLOCK_SIZE),
         }

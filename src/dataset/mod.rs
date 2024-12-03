@@ -2,6 +2,17 @@ use serde::{Serialize, Deserialize};
 use std::fs;
 use std::path::Path;
 
+#[derive(Serialize, Deserialize, Clone)]
+pub struct BenchmarkResult {
+    pub dataset_name: String,
+    pub compressor_name: String,
+    pub compression_rate: f64,
+    pub compression_speed: f64,
+    pub decompression_speed: f64,
+    pub random_access_speed: f64,
+    pub average_random_access_time: f64,
+}
+
 /// Represents a single dataset.
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Dataset {
