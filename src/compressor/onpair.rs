@@ -50,7 +50,7 @@ impl Compressor for OnPairCompressor {
             data, 
             end_positions, 
             &dictionary
-        );   
+        ); 
     }
 
     fn decompress(&self, buffer: &mut Vec<u8>) {
