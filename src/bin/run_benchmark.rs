@@ -6,10 +6,11 @@ use std::path::Path;
 use std::process::Command;
 use prettytable::{Table, row};
 
-const COMPRESSORS: [&str; 6] = ["Copy", "FSST", "LZ4", "Snappy", "Zstd", "BPE"];
+// const COMPRESSORS: [&str; 7] = ["Copy", "FSST", "LZ4", "Snappy", "Zstd", "BPE", "On-Pair"];
+const COMPRESSORS: [&str; 6] = ["Copy", "FSST", "LZ4", "Snappy", "Zstd", /*"BPE,"*/ "On-Pair"];
 const BENCHMARK_PATH: &str = "./run_single_benchmark";
 const OUTPUT_FILE: &str = "benchmark_results.json";
-const N_ITERATIONS: usize = 5;
+const N_ITERATIONS: usize = 15;
 
 fn main() {
     // Get the command-line arguments

@@ -5,7 +5,8 @@ use compression_benchmark_rs::compressor::fsst::FSSTCompressor;
 use compression_benchmark_rs::compressor::lz4::LZ4Compressor;
 use compression_benchmark_rs::compressor::snappy::SnappyCompressor;
 use compression_benchmark_rs::compressor::zstd::ZstdCompressor;
-use compression_benchmark_rs::compressor::bpe4::BPECompressor;
+use compression_benchmark_rs::compressor::bpe::BPECompressor;
+use compression_benchmark_rs::compressor::onpair::OnPairCompressor;
 use std::fs;
 use std::path::Path;
 use std::time::Instant;
@@ -16,7 +17,8 @@ enum CompressorEnum {
     LZ4(LZ4Compressor),
     Snappy(SnappyCompressor),
     Zstd(ZstdCompressor),
-    BPE(BPECompressor),   
+    BPE(BPECompressor),
+    OnPair(OnPairCompressor), 
 }
 
 fn main() {
@@ -54,6 +56,7 @@ fn main() {
         "Snappy" => CompressorEnum::Snappy(SnappyCompressor::new(data.len(), end_positions.len())),
         "Zstd" => CompressorEnum::Zstd(ZstdCompressor::new(data.len(), end_positions.len())),
         "BPE" => CompressorEnum::BPE(BPECompressor::new(data.len(), end_positions.len())),
+        "On-Pair" => CompressorEnum::OnPair(OnPairCompressor::new(data.len(), end_positions.len())),
         _ => {
             eprintln!("Unknown compressor: {}", compressor_name);
             std::process::exit(1);
@@ -67,6 +70,7 @@ fn main() {
         CompressorEnum::Snappy(ref mut c) => benchmark(c, dataset_name, &data, &end_positions, &queries),
         CompressorEnum::Zstd(ref mut c) => benchmark(c, dataset_name, &data, &end_positions, &queries),
         CompressorEnum::BPE(ref mut c) => benchmark(c, dataset_name, &data, &end_positions, &queries),
+        CompressorEnum::OnPair(ref mut c) => benchmark(c, dataset_name, &data, &end_positions, &queries),
     };
 
     // Append the result to the file
