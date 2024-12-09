@@ -6,7 +6,7 @@ use std::path::Path;
 use std::process::Command;
 use prettytable::{Table, row};
 
-const COMPRESSORS: [&str; 7] = ["Copy", "FSST", "LZ4", "Snappy", "Zstd", "BPE", "On-Pair"];
+const COMPRESSORS: [&str; 7] = ["copy", "fsst", "lz4", "snappy", "zstd", "bpe", "on-pair"];
 const BENCHMARK_PATH: &str = "./run_single_benchmark";
 const OUTPUT_FILE: &str = "benchmark_results.json";
 const N_ITERATIONS: usize = 5;

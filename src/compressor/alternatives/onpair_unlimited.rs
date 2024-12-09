@@ -24,7 +24,7 @@ impl Compressor for OnPairCompressor {
     }
 
     fn compress(&mut self, data: &[u8], end_positions: &[usize]) {
-        let trie = train(data, end_positions);
+        let trie = OnPairCompressor::train(data, end_positions);
         self.bits_per_token = (f64::log2(trie.len() as f64)).ceil() as usize;
         self.parse(data, end_positions, &trie);
     }
@@ -79,9 +79,6 @@ impl OnPairCompressor {
             trie.insert(&token, i);
         }
 
-        let mut previous_token_id;
-        let mut previous_length;
-
         let mut start = 0;
         let mut pos = 0;
         
@@ -90,28 +87,30 @@ impl OnPairCompressor {
                 continue;
             }
     
-            pos = start;
+            let (match_length, match_token_id) = trie.find_longest_match(data, pos, end);
+            let mut previous_token_id = match_token_id.unwrap();
+            let mut previous_length = match_length;
+
+            pos = start + previous_length;
     
             while pos < end {
                 // Find the longest match in the Trie
                 let (match_length, match_token_id) = trie.find_longest_match(data, pos, end);
-                match_token_id = match_token_id.unwrap();
-                    
-                 // Update token frequency and possibly merge tokens
-                 if let Some(prev_id) = previous_token_id {
-                    *frequency.entry((prev_id, match_token_id)).or_insert(0) += 1;
+                let match_token_id = match_token_id.unwrap();
     
-                    if frequency[&(prev_id, match_token_id)] > THRESHOLD {
-                        let mut merged_token = &data[pos - previous_length..pos + match_length];
-                        trie.insert(&merged_token, next_token_id);
-                        next_token_id += 1;
-                        frequency.remove(&(prev_id, match_token_id));
-                    }
+                 // Update token frequency and possibly merge tokens
+                *frequency.entry((previous_token_id, match_token_id)).or_insert(0) += 1;
+    
+                if frequency[&(previous_token_id, match_token_id)] > THRESHOLD {
+                    let merged_token = &data[pos - previous_length..pos + match_length];
+                    trie.insert(merged_token, next_token_id);
+                    next_token_id += 1;
+                    frequency.remove(&(previous_token_id, match_token_id));
                 }
-
-                previous_token_id = Some(match_token_id);
+            
+                previous_token_id = match_token_id;
                 previous_length = match_length;
-
+    
                 pos += match_length;
             }
     
@@ -160,59 +159,58 @@ impl OnPairCompressor {
             self.item_end_positions.push(self.data.len());
             start = end;
         }
-    }
-    
-    #[derive(Default)]
-    struct TrieNode {
-        children: FxHashMap<u8, TrieNode>,
-        token_id: Option<usize>,
-    }
-    
-    struct Trie {
-        root: TrieNode,
-        n: usize,
-    }
-    
-    impl Trie {
-        fn new() -> Self {
-            Trie {
-                root: TrieNode::default(),
-                n: 0,
-            }
-        }
-    
-        fn insert(&mut self, sequence: &[u8], token_id: usize) {
-            let mut node = &mut self.root;
-            for &byte in sequence {
-                node = node.children.entry(byte).or_insert_with(TrieNode::default);
-            }
-            node.token_id = Some(token_id);
-            self.n += 1;
-        }
-    
-        fn find_longest_match(&self, data: &[u8], start: usize, end: usize) -> (usize, Option<usize>) {
-            let mut node = &self.root;
-            let mut longest_match_len = 0;
-            let mut last_token_id = None;
-    
-            for (i, &byte) in data[start..end].iter().enumerate() {
-                if let Some(next_node) = node.children.get(&byte) {
-                    node = next_node;
-                    if let Some(token_id) = node.token_id {
-                        longest_match_len = i + 1;
-                        last_token_id = Some(token_id);
-                    }
-                } else {
-                    break;
-                }
-            }
-    
-            (longest_match_len, last_token_id)
-        }
-
-        fn len(&self) -> usize {
-            self.n
-        }
     }    
 }
 
+#[derive(Default)]
+struct TrieNode {
+    children: FxHashMap<u8, TrieNode>,
+    token_id: Option<usize>,
+}
+
+struct Trie {
+    root: TrieNode,
+    n: usize,
+}
+
+impl Trie {
+    fn new() -> Self {
+        Trie {
+            root: TrieNode::default(),
+            n: 0,
+        }
+    }
+
+    fn insert(&mut self, sequence: &[u8], token_id: usize) {
+        let mut node = &mut self.root;
+        for &byte in sequence {
+            node = node.children.entry(byte).or_insert_with(TrieNode::default);
+        }
+        node.token_id = Some(token_id);
+        self.n += 1;
+    }
+
+    fn find_longest_match(&self, data: &[u8], start: usize, end: usize) -> (usize, Option<usize>) {
+        let mut node = &self.root;
+        let mut longest_match_len = 0;
+        let mut last_token_id = None;
+
+        for (i, &byte) in data[start..end].iter().enumerate() {
+            if let Some(next_node) = node.children.get(&byte) {
+                node = next_node;
+                if let Some(token_id) = node.token_id {
+                    longest_match_len = i + 1;
+                    last_token_id = Some(token_id);
+                }
+            } else {
+                break;
+            }
+        }
+
+        (longest_match_len, last_token_id)
+    }
+
+    fn len(&self) -> usize {
+        self.n
+    }
+}    

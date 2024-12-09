@@ -47,11 +47,7 @@ impl Compressor for OnPairCompressor {
     fn compress(&mut self, data: &[u8], end_positions: &[usize]) {
         let dictionary = OnPairCompressor::train(data, end_positions);
         self.bits_per_token = (f64::log2(dictionary.len() as f64)).ceil() as usize;
-        self.parse(
-            data, 
-            end_positions, 
-            &dictionary
-        );   
+        self.parse(data, end_positions, &dictionary);   
     }
 
     fn decompress(&self, buffer: &mut Vec<u8>) {

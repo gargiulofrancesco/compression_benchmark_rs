@@ -50,13 +50,13 @@ fn main() {
 
     // Initialize the compressor
     let mut compressor = match compressor_name.as_str() {
-        "Copy" => CompressorEnum::Copy(CopyCompressor::new(data.len(), end_positions.len())),
-        "FSST" => CompressorEnum::FSST(FSSTCompressor::new(data.len(), end_positions.len())),
-        "LZ4" => CompressorEnum::LZ4(LZ4Compressor::new(data.len(), end_positions.len())),
-        "Snappy" => CompressorEnum::Snappy(SnappyCompressor::new(data.len(), end_positions.len())),
-        "Zstd" => CompressorEnum::Zstd(ZstdCompressor::new(data.len(), end_positions.len())),
-        "BPE" => CompressorEnum::BPE(BPECompressor::new(data.len(), end_positions.len())),
-        "On-Pair" => CompressorEnum::OnPair(OnPairCompressor::new(data.len(), end_positions.len())),
+        "copy" => CompressorEnum::Copy(CopyCompressor::new(data.len(), end_positions.len())),
+        "fsst" => CompressorEnum::FSST(FSSTCompressor::new(data.len(), end_positions.len())),
+        "lz4" => CompressorEnum::LZ4(LZ4Compressor::new(data.len(), end_positions.len())),
+        "snappy" => CompressorEnum::Snappy(SnappyCompressor::new(data.len(), end_positions.len())),
+        "zstd" => CompressorEnum::Zstd(ZstdCompressor::new(data.len(), end_positions.len())),
+        "bpe" => CompressorEnum::BPE(BPECompressor::new(data.len(), end_positions.len())),
+        "on-pair" => CompressorEnum::OnPair(OnPairCompressor::new(data.len(), end_positions.len())),
         _ => {
             eprintln!("Unknown compressor: {}", compressor_name);
             std::process::exit(1);
