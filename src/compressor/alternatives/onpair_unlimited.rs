@@ -3,6 +3,7 @@ use crate::bit_vector::BitVector;
 use rustc_hash::FxHashMap;
 
 const THRESHOLD: usize = 10;
+const FAST_ACCESS_SIZE: usize = 16;
 
 pub struct OnPairCompressor {
     data: BitVector,                            // Store the compressed data as bytes
@@ -30,31 +31,71 @@ impl Compressor for OnPairCompressor {
     }
 
     fn decompress(&self, buffer: &mut Vec<u8>) {
+        let mut total_length = 0;
         let mut pos = 0;
+        
         while pos < self.data.len() {
             let token_id = self.data.get_bits(pos, self.bits_per_token).unwrap() as usize;
             pos += self.bits_per_token;
 
             let start = self.dictionary_end_positions[token_id] as usize;
             let end = self.dictionary_end_positions[token_id + 1] as usize;
-            
-            buffer.extend(&self.dictionary[start..end]);
+            let length = end - start;
+    
+            unsafe {
+                // Fast path for short strings
+                let src_ptr = self.dictionary.as_ptr().add(start);
+                let dst_ptr = buffer.as_mut_ptr().add(total_length);
+                std::ptr::copy_nonoverlapping(src_ptr, dst_ptr, FAST_ACCESS_SIZE);
+                
+                if length > FAST_ACCESS_SIZE {
+                    let src_ptr: *const u8 = self.dictionary.as_ptr().add(start + FAST_ACCESS_SIZE);
+                    let dst_ptr: *mut u8 = buffer.as_mut_ptr().add(total_length + FAST_ACCESS_SIZE);
+                    std::ptr::copy_nonoverlapping(src_ptr, dst_ptr, length - FAST_ACCESS_SIZE);
+                }
+
+                total_length += length;
+            }
+        }
+    
+        // Set the final length of the buffer safely
+        unsafe {
+            buffer.set_len(total_length);
         }
     }
 
     fn get_item_at(&mut self, index: usize, buffer: &mut Vec<u8>) {
-        let start = self.item_end_positions[index];
-        let end = self.item_end_positions[index + 1];
+        let mut pos = self.item_end_positions[index];
+        let item_end = self.item_end_positions[index + 1];
+        let mut total_length = 0;
 
-        let mut pos = start;
-        while pos < end {
+        while pos < item_end {
             let token_id = self.data.get_bits(pos, self.bits_per_token).unwrap() as usize;
             pos += self.bits_per_token;
 
             let start = self.dictionary_end_positions[token_id] as usize;
             let end = self.dictionary_end_positions[token_id + 1] as usize;
-            
-            buffer.extend(&self.dictionary[start..end]);
+            let length = end - start;
+    
+            unsafe {
+                // Fast path for short strings
+                let src_ptr = self.dictionary.as_ptr().add(start);
+                let dst_ptr = buffer.as_mut_ptr().add(total_length);
+                std::ptr::copy_nonoverlapping(src_ptr, dst_ptr, FAST_ACCESS_SIZE);
+                
+                if length > FAST_ACCESS_SIZE {
+                    let src_ptr: *const u8 = self.dictionary.as_ptr().add(start + FAST_ACCESS_SIZE);
+                    let dst_ptr: *mut u8 = buffer.as_mut_ptr().add(total_length + FAST_ACCESS_SIZE);
+                    std::ptr::copy_nonoverlapping(src_ptr, dst_ptr, length - FAST_ACCESS_SIZE);
+                }
+
+                total_length += length;
+            }
+        }
+    
+        // Set the final length of the buffer safely
+        unsafe {
+            buffer.set_len(total_length);
         }
     }
 
@@ -87,7 +128,7 @@ impl OnPairCompressor {
                 continue;
             }
     
-            let (match_length, match_token_id) = trie.find_longest_match(data, pos, end);
+            let (match_length, match_token_id) = trie.longest_prefix_match(data, pos, end);
             let mut previous_token_id = match_token_id.unwrap();
             let mut previous_length = match_length;
 
@@ -95,7 +136,7 @@ impl OnPairCompressor {
     
             while pos < end {
                 // Find the longest match in the Trie
-                let (match_length, match_token_id) = trie.find_longest_match(data, pos, end);
+                let (match_length, match_token_id) = trie.longest_prefix_match(data, pos, end);
                 let match_token_id = match_token_id.unwrap();
     
                  // Update token frequency and possibly merge tokens
@@ -138,7 +179,7 @@ impl OnPairCompressor {
             let mut pos = start;
             while pos < end {
                 // Find the longest match in the Trie
-                let (length, match_token_id) = trie.find_longest_match(data, pos, end);
+                let (length, match_token_id) = trie.longest_prefix_match(data, pos, end);
                 let match_token_id = match_token_id.unwrap();
     
                 if let Some(&existing_token_id) = dictionary_map.get(&match_token_id) {
@@ -190,7 +231,7 @@ impl Trie {
         self.n += 1;
     }
 
-    fn find_longest_match(&self, data: &[u8], start: usize, end: usize) -> (usize, Option<usize>) {
+    fn longest_prefix_match(&self, data: &[u8], start: usize, end: usize) -> (usize, Option<usize>) {
         let mut node = &self.root;
         let mut longest_match_len = 0;
         let mut last_token_id = None;

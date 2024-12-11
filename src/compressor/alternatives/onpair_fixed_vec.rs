@@ -123,7 +123,7 @@ impl OnPairCompressor {
             dictionary.insert(token, i);
         }
     
-        let mut previous_token_id: Option<usize> = None;
+        let mut previous_token_id: Option<usize>;
         let mut previous_token: u128 = 0;
         let mut previous_length: usize = 0;
     
