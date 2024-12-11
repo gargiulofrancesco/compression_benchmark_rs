@@ -25,11 +25,10 @@ const MASKS: [u128; 17] =[
 ];
 
 pub struct OnPairCompressor {
-    data: Vec<u16>,                             // Store the compressed data as bytes
+    data: Vec<u16>,                             // Store the compressed data as token IDs
     item_end_positions: Vec<usize>,             // Store the end positions of each compressed item
     dictionary: Vec<u8>,                        // Store the dictionary
     dictionary_end_positions: Vec<u32>,         // Store the end positions of each element in the dictionary
-    bits_per_token: usize,                      // Number of bits required to represent a token 
 }
 
 impl Compressor for OnPairCompressor {
@@ -39,13 +38,11 @@ impl Compressor for OnPairCompressor {
             item_end_positions: Vec::with_capacity(n_elements),
             dictionary: Vec::new(),
             dictionary_end_positions: Vec::new(),
-            bits_per_token: 0,
         }
     }
 
     fn compress(&mut self, data: &[u8], end_positions: &[usize]) {
         let dictionary = OnPairCompressor::train(data, end_positions);
-        self.bits_per_token = 16;
         self.parse(data, end_positions, &dictionary);   
     }
 
@@ -128,17 +125,13 @@ impl OnPairCompressor {
         let mut previous_length: usize = 0;
     
         let mut start = 0;
-        for &end in end_positions.iter() {
-            if next_token_id == 65535 {
-                break;
-            }
-
+        'outer: for &end in end_positions.iter() {
             previous_token_id = None;
             let mut pos = start;
     
             while pos < end {
                 if next_token_id == 65535 {
-                    break;
+                    break 'outer;
                 }
 
                 // Find the longest match

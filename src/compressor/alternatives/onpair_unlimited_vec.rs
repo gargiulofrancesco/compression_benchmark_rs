@@ -1,45 +1,37 @@
 use super::Compressor;
-use crate::bit_vector::BitVector;
 use rustc_hash::FxHashMap;
 
 const THRESHOLD: usize = 10;
 const FAST_ACCESS_SIZE: usize = 16;
 
 pub struct OnPairCompressor {
-    data: BitVector,                            // Store the compressed data as bytes
+    data: Vec<u16>,                             // Store the compressed data as token IDs
     item_end_positions: Vec<usize>,             // Store the end positions of each compressed item
     dictionary: Vec<u8>,                        // Store the dictionary
     dictionary_end_positions: Vec<u32>,         // Store the end positions of each element in the dictionary
-    bits_per_token: usize,                      // Number of bits required to represent a token 
 }
 
 impl Compressor for OnPairCompressor {
     fn new(data_size: usize, n_elements: usize) -> Self {
         OnPairCompressor {
-            data: BitVector::with_capacity(data_size * 8),
+            data: Vec::with_capacity(data_size),
             item_end_positions: Vec::with_capacity(n_elements),
             dictionary: Vec::new(),
             dictionary_end_positions: Vec::new(),
-            bits_per_token: 0,
         }
     }
 
     fn compress(&mut self, data: &[u8], end_positions: &[usize]) {
         let trie = OnPairCompressor::train(data, end_positions);
-        self.bits_per_token = (f64::log2(trie.len() as f64)).ceil() as usize;
         self.parse(data, end_positions, &trie);
     }
 
     fn decompress(&self, buffer: &mut Vec<u8>) {
         let mut total_length = 0;
-        let mut pos = 0;
-        
-        while pos < self.data.len() {
-            let token_id = self.data.get_bits(pos, self.bits_per_token).unwrap() as usize;
-            pos += self.bits_per_token;
 
-            let start = self.dictionary_end_positions[token_id] as usize;
-            let end = self.dictionary_end_positions[token_id + 1] as usize;
+        for &token_id in self.data.iter() {
+            let start = self.dictionary_end_positions[token_id as usize] as usize;
+            let end = self.dictionary_end_positions[token_id as usize + 1] as usize;
             let length = end - start;
     
             unsafe {
@@ -65,16 +57,13 @@ impl Compressor for OnPairCompressor {
     }
 
     fn get_item_at(&mut self, index: usize, buffer: &mut Vec<u8>) {
-        let mut pos = self.item_end_positions[index];
+        let item_start = self.item_end_positions[index];
         let item_end = self.item_end_positions[index + 1];
         let mut total_length = 0;
 
-        while pos < item_end {
-            let token_id = self.data.get_bits(pos, self.bits_per_token).unwrap() as usize;
-            pos += self.bits_per_token;
-
-            let start = self.dictionary_end_positions[token_id] as usize;
-            let end = self.dictionary_end_positions[token_id + 1] as usize;
+        for &token_id in self.data[item_start..item_end].iter() {
+            let start = self.dictionary_end_positions[token_id as usize] as usize;
+            let end = self.dictionary_end_positions[token_id as usize + 1] as usize;
             let length = end - start;
     
             unsafe {
@@ -100,7 +89,7 @@ impl Compressor for OnPairCompressor {
     }
 
     fn space_used_bytes(&self) -> usize {
-        (self.data.len() / 8) + self.dictionary.len() + self.dictionary_end_positions.len() * 4
+        (self.data.len() * 2) + self.dictionary.len() + (self.dictionary_end_positions.len() * 4)
     }
 
     fn name(&self) -> &str {
@@ -123,7 +112,7 @@ impl OnPairCompressor {
         let mut start = 0;
         let mut pos = 0;
         
-        for &end in end_positions.iter() {
+        'outer: for &end in end_positions.iter() {
             if start == end {
                 continue;
             }
@@ -135,6 +124,10 @@ impl OnPairCompressor {
             pos = start + previous_length;
     
             while pos < end {
+                if next_token_id == 65535 {
+                    break 'outer;
+                }
+                
                 // Find the longest match in the Trie
                 let (match_length, match_token_id) = trie.longest_prefix_match(&data[pos..end]);
                 let match_token_id = match_token_id.unwrap();
@@ -183,9 +176,9 @@ impl OnPairCompressor {
                 let match_token_id = match_token_id.unwrap();
     
                 if let Some(&existing_token_id) = dictionary_map.get(&match_token_id) {
-                    self.data.append_bits(existing_token_id as u64, self.bits_per_token);
+                    self.data.push(existing_token_id as u16);
                 } else {
-                    self.data.append_bits(next_token_id as u64, self.bits_per_token);
+                    self.data.push(next_token_id as u16);
                     dictionary_map.insert(match_token_id, next_token_id);
     
                     self.dictionary.extend(&data[pos..pos + length]);

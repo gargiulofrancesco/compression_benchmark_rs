@@ -26,7 +26,7 @@ const MASKS: [u128; 17] =[
 ];
 
 pub struct OnPairCompressor {
-    data: BitVector,                            // Store the compressed data as bytes
+    data: BitVector,                            // Store the compressed data as token IDs
     item_end_positions: Vec<usize>,             // Store the end positions of each compressed item
     dictionary: Vec<u8>,                        // Store the dictionary
     dictionary_end_positions: Vec<u32>,         // Store the end positions of each element in the dictionary
