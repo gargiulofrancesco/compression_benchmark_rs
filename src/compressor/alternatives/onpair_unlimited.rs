@@ -128,7 +128,7 @@ impl OnPairCompressor {
                 continue;
             }
     
-            let (match_length, match_token_id) = trie.longest_prefix_match(data, pos, end);
+            let (match_length, match_token_id) = trie.longest_prefix_match(&data[pos..end]);
             let mut previous_token_id = match_token_id.unwrap();
             let mut previous_length = match_length;
 
@@ -136,7 +136,7 @@ impl OnPairCompressor {
     
             while pos < end {
                 // Find the longest match in the Trie
-                let (match_length, match_token_id) = trie.longest_prefix_match(data, pos, end);
+                let (match_length, match_token_id) = trie.longest_prefix_match(&data[pos..end]);
                 let match_token_id = match_token_id.unwrap();
     
                  // Update token frequency and possibly merge tokens
@@ -179,7 +179,7 @@ impl OnPairCompressor {
             let mut pos = start;
             while pos < end {
                 // Find the longest match in the Trie
-                let (length, match_token_id) = trie.longest_prefix_match(data, pos, end);
+                let (length, match_token_id) = trie.longest_prefix_match(&data[pos..end]);
                 let match_token_id = match_token_id.unwrap();
     
                 if let Some(&existing_token_id) = dictionary_map.get(&match_token_id) {
@@ -222,6 +222,7 @@ impl Trie {
         }
     }
 
+    #[inline]
     fn insert(&mut self, sequence: &[u8], token_id: usize) {
         let mut node = &mut self.root;
         for &byte in sequence {
@@ -231,12 +232,13 @@ impl Trie {
         self.n += 1;
     }
 
-    fn longest_prefix_match(&self, data: &[u8], start: usize, end: usize) -> (usize, Option<usize>) {
+    #[inline]
+    fn longest_prefix_match(&self, data: &[u8]) -> (usize, Option<usize>) {
         let mut node = &self.root;
         let mut longest_match_len = 0;
         let mut last_token_id = None;
 
-        for (i, &byte) in data[start..end].iter().enumerate() {
+        for (i, &byte) in data.iter().enumerate() {
             if let Some(next_node) = node.children.get(&byte) {
                 node = next_node;
                 if let Some(token_id) = node.token_id {
