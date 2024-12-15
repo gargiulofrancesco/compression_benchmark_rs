@@ -129,7 +129,7 @@ impl OnPairCompressor {
                     break 'outer;
                 }
                 
-                // Find the longest match in the Trie
+                // Find the longest match
                 let (match_token_id, match_length) = lpm.find_longest_match(&data[pos..end]).unwrap();
     
                  // Update token frequency and possibly merge tokens
@@ -159,7 +159,7 @@ impl OnPairCompressor {
         self.dictionary_end_positions.push(0);
         self.item_end_positions.push(0);
     
-        let mut dictionary_map: FxHashMap<usize, usize> = FxHashMap::default();
+        let mut dictionary_map: FxHashMap<u16, u16> = FxHashMap::default();
         let mut next_token_id = 0;
     
         let mut start = 0;
@@ -171,9 +171,8 @@ impl OnPairCompressor {
     
             let mut pos = start;
             while pos < end {
-                // Find the longest match in the Trie
+                // Find the longest match
                 let (match_token_id, length) = lpm.find_longest_match(&data[pos..end]).unwrap();
-                let match_token_id = match_token_id as usize;
     
                 if let Some(&existing_token_id) = dictionary_map.get(&match_token_id) {
                     self.data.push(existing_token_id as u16);
