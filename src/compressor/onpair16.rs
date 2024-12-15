@@ -1,28 +1,10 @@
+use crate::longest_prefix_matcher::LongestPrefixMatcher;
 use super::Compressor;
 use rustc_hash::FxHashMap;
 use std::arch::x86_64::*;
 
-const THRESHOLD: usize = 5;
-
-const MASKS: [u128; 17] =[
-    0x00000000000000000000000000000000, // 0 bytes
-    0x000000000000000000000000000000FF, // 1 byte
-    0x0000000000000000000000000000FFFF, // 2 bytes
-    0x00000000000000000000000000FFFFFF, // 3 bytes
-    0x000000000000000000000000FFFFFFFF, // 4 bytes
-    0x0000000000000000000000FFFFFFFFFF, // 5 bytes
-    0x00000000000000000000FFFFFFFFFFFF, // 6 bytes
-    0x000000000000000000FFFFFFFFFFFFFF, // 7 bytes
-    0x0000000000000000FFFFFFFFFFFFFFFF, // 8 bytes
-    0x00000000000000FFFFFFFFFFFFFFFFFF, // 9 bytes
-    0x000000000000FFFFFFFFFFFFFFFFFFFF, // 10 bytes
-    0x0000000000FFFFFFFFFFFFFFFFFFFFFF, // 11 bytes
-    0x00000000FFFFFFFFFFFFFFFFFFFFFFFF, // 12 bytes
-    0x000000FFFFFFFFFFFFFFFFFFFFFFFFFF, // 13 bytes
-    0x0000FFFFFFFFFFFFFFFFFFFFFFFFFFFF, // 14 bytes
-    0x00FFFFFFFFFFFFFFFFFFFFFFFFFFFFFF, // 15 bytes
-    0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF, // 16 bytes
-];
+const THRESHOLD: usize = 10;
+const MAX_LENGTH: usize = 16;
 
 pub struct OnPairCompressor {
     data: Vec<u16>,                             // Store the compressed data as token IDs
@@ -42,8 +24,8 @@ impl Compressor for OnPairCompressor {
     }
 
     fn compress(&mut self, data: &[u8], end_positions: &[usize]) {
-        let dictionary = OnPairCompressor::train(data, end_positions);
-        self.parse(data, end_positions, &dictionary);   
+        let lpm = OnPairCompressor::train(data, end_positions);
+        self.parse(data, end_positions, &lpm);
     }
 
     fn decompress(&self, buffer: &mut Vec<u8>) {
@@ -71,7 +53,6 @@ impl Compressor for OnPairCompressor {
         }
     }
 
-    #[inline]
     fn get_item_at(&mut self, index: usize, buffer: &mut Vec<u8>) {
         let start = self.item_end_positions[index];
         let end = self.item_end_positions[index + 1];
@@ -109,80 +90,63 @@ impl Compressor for OnPairCompressor {
 }
 
 impl OnPairCompressor {
-    fn train(data: &[u8], end_positions: &[usize]) -> FxHashMap<u128, usize> {
-        let mut dictionary: FxHashMap<u128, usize> = FxHashMap::default();
-        let mut frequency: FxHashMap<(usize, usize), usize> = FxHashMap::default();
+    fn train(data: &[u8], end_positions: &[usize]) -> LongestPrefixMatcher<u16> {
+        let mut frequency: FxHashMap<(u16, u16), usize> = FxHashMap::default();
+        let mut lpm = LongestPrefixMatcher::new();
         let mut next_token_id = 256;
     
         // Initialize the dictionary with single-byte tokens
         for i in 0..256 {
-            let token = i as u128;
-            dictionary.insert(token, i);
+            let token = vec![i as u8];
+            lpm.insert(&token, i as u16);
         }
-    
-        let mut previous_token_id: Option<usize>;
-        let mut previous_token: u128 = 0;
-        let mut previous_length: usize = 0;
-    
+
         let mut start = 0;
+        let mut pos = 0;
+        
         'outer: for &end in end_positions.iter() {
-            previous_token_id = None;
-            let mut pos = start;
+            if start == end {
+                continue;
+            }
+    
+            let (match_token_id, match_length) = lpm.find_longest_match(&data[pos..end]).unwrap();
+            let mut previous_token_id = match_token_id;
+            let mut previous_length = match_length;
+
+            pos = start + previous_length;
     
             while pos < end {
                 if next_token_id == 65535 {
                     break 'outer;
                 }
-
-                // Find the longest match
-                let mut match_token_id = 0;
-                let mut match_token: u128 = 0;
-                let mut match_length = 0;
-    
-                let max_len = (end - pos).min(16);
-    
-                unsafe {
-                   // Load 16 bytes from dictionary and store into buffer
-                   let simd_str = _mm_loadu_si128(data.as_ptr().add(pos) as *const _);
-                   _mm_storeu_si128((&mut match_token as *mut u128) as *mut _, simd_str);
-                }
-    
-                for length in (1..=max_len).rev() {
-                    match_token &= MASKS[length];
-    
-                    if let Some(&id) = dictionary.get(&match_token) {
-                        match_token_id = id;
-                        match_length = length;
-                        break;
-                    }
-                }
-    
-                // Update token frequency and possibly merge tokens
-                if let Some(prev_id) = previous_token_id {
-                    *frequency.entry((prev_id, match_token_id)).or_insert(0) += 1;
                 
-                    if frequency[&(prev_id, match_token_id)] > THRESHOLD && match_length + previous_length <= 16 {
-                        let merged_token = (match_token << (previous_length << 3)) | previous_token;
-                        dictionary.insert(merged_token, next_token_id);
+                // Find the longest match in the Trie
+                let (match_token_id, match_length) = lpm.find_longest_match(&data[pos..end]).unwrap();
+
+                if match_length + previous_length <= MAX_LENGTH {
+                    // Update token frequency and possibly merge tokens
+                    *frequency.entry((previous_token_id, match_token_id)).or_insert(0) += 1;
+
+                    if frequency[&(previous_token_id, match_token_id)] > THRESHOLD {
+                        let merged_token = &data[pos - previous_length..pos + match_length];
+                        lpm.insert(merged_token, next_token_id);
                         next_token_id += 1;
-                        frequency.remove(&(prev_id, match_token_id));
+                        frequency.remove(&(previous_token_id, match_token_id));
                     }
                 }
     
-                previous_token_id = Some(match_token_id);
+                previous_token_id = match_token_id;
                 previous_length = match_length;
-                previous_token = match_token;
-    
                 pos += match_length;
             }
     
             start = end;
         }
     
-        dictionary
+        lpm
     }
-
-    fn parse(&mut self, data: &[u8], end_positions: &[usize], dictionary: &FxHashMap<u128, usize>) {
+    
+    fn parse(&mut self, data: &[u8], end_positions: &[usize], lpm: &LongestPrefixMatcher<u16>) {
         // Initialize dictionary metadata
         self.dictionary_end_positions.push(0);
         self.item_end_positions.push(0);
@@ -199,28 +163,9 @@ impl OnPairCompressor {
     
             let mut pos = start;
             while pos < end {
-                // Find the longest match
-                let mut match_token_id = 0;
-                let mut match_token: u128 = 0;
-                let mut match_length = 0;
-    
-                let max_len = (end - pos).min(16);
-    
-                unsafe {
-                   // Load 16 bytes from dictionary and store into buffer
-                   let simd_str = _mm_loadu_si128(data.as_ptr().add(pos) as *const _);
-                   _mm_storeu_si128((&mut match_token as *mut u128) as *mut _, simd_str);
-                }
-    
-                for length in (1..=max_len).rev() {
-                    match_token &= MASKS[length];
-    
-                    if let Some(&id) = dictionary.get(&match_token) {
-                        match_token_id = id;
-                        match_length = length;
-                        break;
-                    }
-                }
+                // Find the longest match in the Trie
+                let (match_token_id, length) = lpm.find_longest_match(&data[pos..end]).unwrap();
+                let match_token_id = match_token_id as usize;
     
                 if let Some(&existing_token_id) = dictionary_map.get(&match_token_id) {
                     self.data.push(existing_token_id as u16);
@@ -228,17 +173,17 @@ impl OnPairCompressor {
                     self.data.push(next_token_id as u16);
                     dictionary_map.insert(match_token_id, next_token_id);
     
-                    self.dictionary.extend(&data[pos..pos + match_length]);
+                    self.dictionary.extend(&data[pos..pos + length]);
                     self.dictionary_end_positions.push(self.dictionary.len() as u32);
     
                     next_token_id += 1;
                 }
     
-                pos += match_length;
+                pos += length;
             }
-
+    
             self.item_end_positions.push(self.data.len());
             start = end;
         }
-    }
+    }    
 }
