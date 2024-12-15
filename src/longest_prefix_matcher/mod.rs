@@ -15,25 +15,22 @@ const MASKS: [u64; 9] = [
 const MIN_MATCH: usize = 8;
 
 pub struct LongestPrefixMatcher<V> {
-    long_match_buckets: FxHashMap<u64, Vec<(Vec<u8>, V)>>,        // mapping from hash to bucket of dictionary entries
-    short_match_lookup: FxHashMap<u64, V>,                        // mapping from prefix (1-8 bytes) to dictionary ID 
+    long_match_buckets: FxHashMap<u64, Vec<V>>,     // mapping from prefix (8 bytes) to bucket of dictionary IDs
+    short_match_lookup: FxHashMap<u64, V>,          // mapping from prefix (1-8 bytes) to dictionary ID 
+    dictionary: Vec<u8>,
+    end_positions: Vec<u32>,
 }
 
 impl<V> LongestPrefixMatcher<V> 
 where 
-    V: Copy,
+    V: Copy + Into<usize>,
 {   
-    pub fn new() -> Self {        
-        let mut long_match_buckets: FxHashMap<u64, Vec<(Vec<u8>, V)>> = FxHashMap::default();
-        let mut short_match_lookup: FxHashMap<u64, V> = FxHashMap::default();
-
-        // Preallocate to reduce dynamic resizing
-        long_match_buckets.reserve(u16::MAX as usize);
-        short_match_lookup.reserve(u16::MAX as usize);
-
+    pub fn new() -> Self {
         Self {
-            long_match_buckets,
-            short_match_lookup,
+            long_match_buckets: FxHashMap::default(),
+            short_match_lookup: FxHashMap::default(),
+            dictionary: Vec::with_capacity(1024 * 1024),
+            end_positions: vec![0],
         }
     }
 
@@ -41,51 +38,22 @@ where
     pub fn insert(&mut self, entry: &[u8], id: V) {
         if entry.len() > MIN_MATCH {
             let prefix_u64 = Self::bytes_to_u64_le(&entry, MIN_MATCH);
-            let suffix_entry = entry[MIN_MATCH..].to_vec();
+            self.dictionary.extend_from_slice(&entry[MIN_MATCH..]);
+            self.end_positions.push(self.dictionary.len() as u32);
 
-            self.long_match_buckets
-                .entry(prefix_u64)
-                .or_default()
-                .push((suffix_entry, id));
-
-            let bucket = self.long_match_buckets.get_mut(&prefix_u64).unwrap();
-            bucket.sort_by(|a, b| b.0.len().cmp(&a.0.len())); 
+            let bucket = self.long_match_buckets.entry(prefix_u64).or_default();
+            bucket.push(id);
+            bucket.sort_unstable_by(|&id1, &id2| {
+                let len1 = self.end_positions[id1.into() + 1] as usize 
+                           - self.end_positions[id1.into()] as usize;
+                let len2 = self.end_positions[id2.into() + 1] as usize 
+                           - self.end_positions[id2.into()] as usize;
+                len2.cmp(&len1)
+            });
         } else {
             let prefix_u64 = Self::bytes_to_u64_le(&entry, entry.len());
             self.short_match_lookup.insert(prefix_u64, id);
-        }
-    }
-
-    pub fn with_dictionary(dictionary: &mut Vec<(Vec<u8>, V)>) -> Self {        
-        let mut long_match_buckets: FxHashMap<u64, Vec<(Vec<u8>, V)>> = FxHashMap::default();
-        let mut short_match_lookup: FxHashMap<u64, V> = FxHashMap::default();
-
-        // Preallocate to reduce dynamic resizing
-        long_match_buckets.reserve(dictionary.len());
-        short_match_lookup.reserve(dictionary.len());
-
-        // Sort dictionary by length in descending order to optimize matching
-        dictionary.sort_by(|a, b| b.0.len().cmp(&a.0.len()));
-
-        // Separate and preprocess dictionary entries
-        for (entry, id) in dictionary.iter() {
-            if entry.len() > MIN_MATCH {
-                let prefix_u64 = Self::bytes_to_u64_le(entry, MIN_MATCH);
-                let suffix_entry = entry[MIN_MATCH..].to_vec();
-
-                long_match_buckets
-                    .entry(prefix_u64)
-                    .or_default()
-                    .push((suffix_entry, *id));
-            } else {
-                let prefix_u64 = Self::bytes_to_u64_le(&entry, entry.len());
-                short_match_lookup.insert(prefix_u64, *id);
-            }
-        }
-
-        Self {
-            long_match_buckets,
-            short_match_lookup,
+            self.end_positions.push(self.dictionary.len() as u32);
         }
     }
 
@@ -96,9 +64,12 @@ where
             let prefix_u64 = Self::bytes_to_u64_le(&data, MIN_MATCH);
             
             if let Some(bucket) = self.long_match_buckets.get(&prefix_u64) {
-                for (entry, id) in bucket {
-                    if data[MIN_MATCH..].starts_with(entry) {
-                        return Some((*id, entry.len() + MIN_MATCH));
+                for &id in bucket {
+                    let dict_start = self.end_positions[id.into()] as usize;
+                    let dict_end = self.end_positions[id.into() + 1] as usize;
+                    let length = dict_end - dict_start;
+                    if data[MIN_MATCH..].starts_with(&self.dictionary[dict_start..dict_end]) {
+                        return Some((id, MIN_MATCH + length));
                     }
                 }
             }
