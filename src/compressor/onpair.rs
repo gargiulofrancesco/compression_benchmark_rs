@@ -23,8 +23,8 @@ impl Compressor for OnPairCompressor {
     }
 
     fn compress(&mut self, data: &[u8], end_positions: &[usize]) {
-        let lpe = OnPairCompressor::train(data, end_positions);
-        self.parse(data, end_positions, &lpe);
+        let lpm = OnPairCompressor::train(data, end_positions);
+        self.parse(data, end_positions, &lpm);
     }
 
     fn decompress(&self, buffer: &mut Vec<u8>) {
@@ -100,14 +100,14 @@ impl Compressor for OnPairCompressor {
 
 impl OnPairCompressor {
     fn train(data: &[u8], end_positions: &[usize]) -> LongestPrefixMatcher<u16> {
-        let mut frequency: FxHashMap<(usize, usize), usize> = FxHashMap::default();
-        let mut lpe = LongestPrefixMatcher::new();
+        let mut frequency: FxHashMap<(u16, u16), usize> = FxHashMap::default();
+        let mut lpm = LongestPrefixMatcher::new();
         let mut next_token_id = 256;
     
         // Initialize the dictionary with single-byte tokens
         for i in 0..256 {
             let token = vec![i as u8];
-            lpe.insert(&token, i as u16);
+            lpm.insert(&token, i as u16);
         }
 
         let mut start = 0;
@@ -118,8 +118,8 @@ impl OnPairCompressor {
                 continue;
             }
     
-            let (match_token_id, match_length) = lpe.find_longest_match(&data[pos..end]).unwrap();
-            let mut previous_token_id = match_token_id as usize;
+            let (match_token_id, match_length) = lpm.find_longest_match(&data[pos..end]).unwrap();
+            let mut previous_token_id = match_token_id;
             let mut previous_length = match_length;
 
             pos = start + previous_length;
@@ -130,15 +130,14 @@ impl OnPairCompressor {
                 }
                 
                 // Find the longest match in the Trie
-                let (match_token_id, match_length) = lpe.find_longest_match(&data[pos..end]).unwrap();
-                let match_token_id = match_token_id as usize;
+                let (match_token_id, match_length) = lpm.find_longest_match(&data[pos..end]).unwrap();
     
                  // Update token frequency and possibly merge tokens
                 *frequency.entry((previous_token_id, match_token_id)).or_insert(0) += 1;
     
                 if frequency[&(previous_token_id, match_token_id)] > THRESHOLD {
                     let merged_token = &data[pos - previous_length..pos + match_length];
-                    lpe.insert(merged_token, next_token_id);
+                    lpm.insert(merged_token, next_token_id);
                     next_token_id += 1;
                     frequency.remove(&(previous_token_id, match_token_id));
                 }
@@ -152,10 +151,10 @@ impl OnPairCompressor {
             start = end;
         }
     
-        lpe
+        lpm
     }
     
-    fn parse(&mut self, data: &[u8], end_positions: &[usize], lpe: &LongestPrefixMatcher<u16>) {
+    fn parse(&mut self, data: &[u8], end_positions: &[usize], lpm: &LongestPrefixMatcher<u16>) {
         // Initialize dictionary metadata
         self.dictionary_end_positions.push(0);
         self.item_end_positions.push(0);
@@ -173,7 +172,7 @@ impl OnPairCompressor {
             let mut pos = start;
             while pos < end {
                 // Find the longest match in the Trie
-                let (match_token_id, length) = lpe.find_longest_match(&data[pos..end]).unwrap();
+                let (match_token_id, length) = lpm.find_longest_match(&data[pos..end]).unwrap();
                 let match_token_id = match_token_id as usize;
     
                 if let Some(&existing_token_id) = dictionary_map.get(&match_token_id) {
