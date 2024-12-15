@@ -159,8 +159,8 @@ impl OnPairCompressor {
         self.dictionary_end_positions.push(0);
         self.item_end_positions.push(0);
     
-        let mut dictionary_map: FxHashMap<u16, u16> = FxHashMap::default();
-        let mut next_token_id = 0;
+        let mut dictionary_map: Vec<Option<u16>> = vec![None; 1<<16];
+        let mut next_token_id: u16 = 0;
     
         let mut start = 0;
         for &end in end_positions.iter() {
@@ -174,12 +174,12 @@ impl OnPairCompressor {
                 // Find the longest match
                 let (match_token_id, length) = lpm.find_longest_match(&data[pos..end]).unwrap();
     
-                if let Some(&existing_token_id) = dictionary_map.get(&match_token_id) {
+                if let Some(existing_token_id) = dictionary_map[match_token_id as usize] {
                     self.data.push(existing_token_id as u16);
                 } else {
                     self.data.push(next_token_id as u16);
-                    dictionary_map.insert(match_token_id, next_token_id);
-    
+                    dictionary_map[match_token_id as usize] = Some(next_token_id);
+
                     self.dictionary.extend(&data[pos..pos + length]);
                     self.dictionary_end_positions.push(self.dictionary.len() as u32);
     
