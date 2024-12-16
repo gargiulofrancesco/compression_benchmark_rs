@@ -81,7 +81,7 @@ impl Compressor for OnPairCompressor {
     }
 
     fn space_used_bytes(&self) -> usize {
-        (self.data.len() * 2) + self.dictionary.len() + (self.dictionary_end_positions.len() * 4)
+        (self.data.len() * std::mem::size_of::<u16>()) + self.dictionary.len() + (self.dictionary_end_positions.len() * std::mem::size_of::<u32>())
     }
 
     fn name(&self) -> &str {

@@ -28,69 +28,59 @@ impl Compressor for OnPairCompressor {
     }
 
     fn decompress(&self, buffer: &mut Vec<u8>) {
-        let mut total_length = 0;
+        let dict_ptr = self.dictionary.as_ptr();
+        let end_positions_ptr = self.dictionary_end_positions.as_ptr();
 
-        for &token_id in self.data.iter() {
-            let start = self.dictionary_end_positions[token_id as usize] as usize;
-            let end = self.dictionary_end_positions[token_id as usize + 1] as usize;
-            let length = end - start;
-    
+        for &token_id in self.data.iter(){
             unsafe {
-                // Fast path for short strings
-                let src_ptr = self.dictionary.as_ptr().add(start);
-                let dst_ptr = buffer.as_mut_ptr().add(total_length);
+                let dict_start = *end_positions_ptr.add(token_id as usize) as usize;
+                let dict_end = *end_positions_ptr.add(token_id as usize + 1) as usize;
+                let length = dict_end - dict_start;
+
+                let mut src_ptr = dict_ptr.add(dict_start);
+                let mut dst_ptr = buffer.as_mut_ptr().add(buffer.len());
                 std::ptr::copy_nonoverlapping(src_ptr, dst_ptr, FAST_ACCESS_SIZE);
-                
+
                 if length > FAST_ACCESS_SIZE {
-                    let src_ptr: *const u8 = self.dictionary.as_ptr().add(start + FAST_ACCESS_SIZE);
-                    let dst_ptr: *mut u8 = buffer.as_mut_ptr().add(total_length + FAST_ACCESS_SIZE);
+                    src_ptr = src_ptr.add(FAST_ACCESS_SIZE); 
+                    dst_ptr = dst_ptr.add(FAST_ACCESS_SIZE);
                     std::ptr::copy_nonoverlapping(src_ptr, dst_ptr, length - FAST_ACCESS_SIZE);
                 }
 
-                total_length += length;
+                buffer.set_len(buffer.len() + length);
             }
-        }
-    
-        // Set the final length of the buffer safely
-        unsafe {
-            buffer.set_len(total_length);
         }
     }
 
     fn get_item_at(&mut self, index: usize, buffer: &mut Vec<u8>) {
         let item_start = self.item_end_positions[index];
         let item_end = self.item_end_positions[index + 1];
-        let mut total_length = 0;
+        let dict_ptr = self.dictionary.as_ptr();
+        let end_positions_ptr = self.dictionary_end_positions.as_ptr();
 
         for &token_id in self.data[item_start..item_end].iter() {
-            let start = self.dictionary_end_positions[token_id as usize] as usize;
-            let end = self.dictionary_end_positions[token_id as usize + 1] as usize;
-            let length = end - start;
-    
             unsafe {
-                // Fast path for short strings
-                let src_ptr = self.dictionary.as_ptr().add(start);
-                let dst_ptr = buffer.as_mut_ptr().add(total_length);
+                let dict_start = *end_positions_ptr.add(token_id as usize) as usize;
+                let dict_end = *end_positions_ptr.add(token_id as usize + 1) as usize;
+                let length = dict_end - dict_start;
+
+                let mut src_ptr = dict_ptr.add(dict_start);
+                let mut dst_ptr = buffer.as_mut_ptr().add(buffer.len());
                 std::ptr::copy_nonoverlapping(src_ptr, dst_ptr, FAST_ACCESS_SIZE);
-                
+
                 if length > FAST_ACCESS_SIZE {
-                    let src_ptr: *const u8 = self.dictionary.as_ptr().add(start + FAST_ACCESS_SIZE);
-                    let dst_ptr: *mut u8 = buffer.as_mut_ptr().add(total_length + FAST_ACCESS_SIZE);
+                    src_ptr = src_ptr.add(FAST_ACCESS_SIZE); 
+                    dst_ptr = dst_ptr.add(FAST_ACCESS_SIZE);
                     std::ptr::copy_nonoverlapping(src_ptr, dst_ptr, length - FAST_ACCESS_SIZE);
                 }
 
-                total_length += length;
+                buffer.set_len(buffer.len() + length);
             }
-        }
-    
-        // Set the final length of the buffer safely
-        unsafe {
-            buffer.set_len(total_length);
         }
     }
 
     fn space_used_bytes(&self) -> usize {
-        (self.data.len() * 2) + self.dictionary.len() + (self.dictionary_end_positions.len() * 4)
+        (self.data.len() * std::mem::size_of::<u16>()) + self.dictionary.len() + (self.dictionary_end_positions.len() * std::mem::size_of::<u32>())
     }
 
     fn name(&self) -> &str {
