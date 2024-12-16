@@ -1,7 +1,6 @@
 use crate::longest_prefix_matcher::LongestPrefixMatcher;
 use super::Compressor;
 use rustc_hash::FxHashMap;
-use std::arch::x86_64::*;
 
 const THRESHOLD: usize = 10;
 const MAX_LENGTH: usize = 16;
@@ -39,20 +38,16 @@ impl Compressor for OnPairCompressor {
                 let dict_end = *end_positions_ptr.add(token_id as usize + 1) as usize;
                 let length = dict_end - dict_start;
 
-                // Use SIMD to copy 16 bytes (128 bits) at a time to the buffer
-                let src_ptr = dict_ptr.add(dict_start) as *const __m128i;
-                let dst_ptr = buffer.as_mut_ptr().add(buffer.len()) as *mut __m128i;
+                let src_ptr = dict_ptr.add(dict_start);
+                let dst_ptr = buffer.as_mut_ptr().add(buffer.len());
+                std::ptr::copy_nonoverlapping(src_ptr, dst_ptr, MAX_LENGTH);
 
-                // Load 16 bytes from dictionary and store into buffer
-                let data = _mm_loadu_si128(src_ptr);
-                _mm_storeu_si128(dst_ptr, data);
-
-                // Update buffer length for each entry (assuming fixed 16 bytes here)
+                // Update buffer length for each entry
                 buffer.set_len(buffer.len() + length);
             }
         }
     }
-
+    
     fn get_item_at(&mut self, index: usize, buffer: &mut Vec<u8>) {
         let start = self.item_end_positions[index];
         let end = self.item_end_positions[index + 1];
@@ -66,15 +61,11 @@ impl Compressor for OnPairCompressor {
                 let dict_end = *end_positions_ptr.add(token_id as usize + 1) as usize;
                 let length = dict_end - dict_start;
 
-                // Use SIMD to copy 16 bytes (128 bits) at a time to the buffer
-                let src_ptr = dict_ptr.add(dict_start) as *const __m128i;
-                let dst_ptr = buffer.as_mut_ptr().add(buffer.len()) as *mut __m128i;
+                let src_ptr = dict_ptr.add(dict_start);
+                let dst_ptr = buffer.as_mut_ptr().add(buffer.len());
+                std::ptr::copy_nonoverlapping(src_ptr, dst_ptr, MAX_LENGTH);
 
-                // Load 16 bytes from dictionary and store into buffer
-                let data = _mm_loadu_si128(src_ptr);
-                _mm_storeu_si128(dst_ptr, data);
-
-                // Update buffer length for each entry (assuming fixed 16 bytes here)
+                // Update buffer length for each entry
                 buffer.set_len(buffer.len() + length);
             }
         }
