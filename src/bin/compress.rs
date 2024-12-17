@@ -1,6 +1,7 @@
 use compression_benchmark_rs::compressor::onpair::OnPairCompressor;
 use compression_benchmark_rs::compressor::Compressor;
 use std::{env, vec};
+use std::io::{Read, Write};
 use std::time::Instant;
 use std::{fs, path::Path};
 
@@ -71,4 +72,77 @@ fn main() {
         (total_compressed_size as f64) / (1024.0 * 1024.0),
         (total_size as f64) / (total_compressed_size as f64),
     );
+}
+
+fn compress_lz4(data: &[u8]) {
+    // Compress
+    let mut compression_buffer: Vec<u8> = Vec::with_capacity(data.len() + 1024);
+    let mut encoder = lz4::EncoderBuilder::new()
+        .level(4)  // Compression level (1-9)
+        .build(&mut compression_buffer)
+        .unwrap();
+    encoder.write_all(&data).unwrap();
+    let _ = encoder.finish();
+
+    // Decompress
+    let mut decompression_buffer: Vec<u8> = Vec::with_capacity(data.len() + 1024);
+    let mut decoder = lz4::Decoder::new(&compression_buffer[..]).unwrap();
+    decoder.read_to_end(&mut decompression_buffer).unwrap();
+
+}
+
+fn compress_lz4hc(data: &[u8]) {
+    // Compression
+    let mut compression_buffer: Vec<u8> = Vec::with_capacity(data.len() + 1024);
+    unsafe{
+        compression_buffer.set_len(data.len());
+    }
+    let compressed_size = lz4::block::compress_to_buffer(&data, Some(lz4::block::CompressionMode::HIGHCOMPRESSION(9)), false, &mut compression_buffer).unwrap();
+    unsafe{
+        compression_buffer.set_len(compressed_size);
+    }
+
+    // Decompression
+    let mut decompression_buffer: Vec<u8> = Vec::with_capacity(data.len() + 1024);    
+    unsafe{
+        decompression_buffer.set_len(data.len());
+    }
+    let _ = lz4::block::decompress_to_buffer(&compression_buffer, Some(data.len() as i32), &mut decompression_buffer);
+}
+
+fn compress_snappy(data: &[u8]) {
+    // Compression
+    let mut compression_buffer: Vec<u8> = Vec::with_capacity(data.len() + 2048);
+    unsafe{
+        compression_buffer.set_len(snap::raw::max_compress_len(data.len()));
+    }
+
+    let mut encoder = snap::raw::Encoder::new();
+    let compressed_bytes = encoder.compress(&data, &mut compression_buffer).expect("Snappy compression failed");
+    unsafe{
+        compression_buffer.set_len(compressed_bytes);
+    }
+
+    // Decompression
+    let mut decompression_buffer: Vec<u8> = Vec::with_capacity(data.len() as usize + 2048);
+    let mut decoder = snap::raw::Decoder::new();
+    unsafe{
+        decompression_buffer.set_len(data.len());
+    }
+    decoder.decompress(&compression_buffer, &mut decompression_buffer).expect("Snappy decompression failed");
+}
+
+fn compress_zstd(data: &[u8]) {
+    // Compression
+    let mut compression_buffer: Vec<u8> = Vec::with_capacity(data.len() + 1024);
+    let mut encoder = zstd::stream::Encoder::new(&mut compression_buffer, 9).unwrap();
+    encoder.write_all(&data).unwrap();
+    encoder.finish().unwrap();
+    compression_buffer.shrink_to_fit();
+
+    // Decompression
+    let mut decompression_buffer: Vec<u8> = Vec::with_capacity(data.len() + 1024);
+    let mut decoder = zstd::stream::Decoder::new(&compression_buffer[..]).unwrap();
+    decoder.read_to_end(&mut decompression_buffer).unwrap();
+    decompression_buffer.shrink_to_fit();
 }
