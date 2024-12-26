@@ -49,10 +49,10 @@ impl BitVector {
     pub fn extend_with_ones(&mut self, n: usize) {
         self.position += n;
         let new_size = (self.position + 63) / 64;
-        self.data.resize_with(new_size, || u64::MAX);  // Fill with u64::MAX
+        self.data.resize_with(new_size, || u64::MAX); // Fill with u64::MAX
         if self.position % 64 != 0 {
             let remaining_bits = self.position % 64;
-            self.data[new_size - 1] = (1u64 << remaining_bits) - 1;  // Set only the last bits to 1
+            self.data[new_size - 1] = (1u64 << remaining_bits) - 1; // Set only the last bits to 1
         }
     }
 
@@ -132,7 +132,7 @@ impl BitVector {
         }
         Some((self.data[block] >> shift) | (self.data[block + 1] << (64 - shift) & mask))
     }
-    
+
     #[inline(always)]
     pub fn next_one(&self, pos: usize) -> Option<usize> {
         let mut next_pos = pos + 1;
@@ -141,7 +141,7 @@ impl BitVector {
             return None;
         }
         let mut buffer = self.data[word_pos] >> (next_pos % 64);
-        
+
         while buffer == 0 {
             next_pos += 64 - (next_pos % 64);
             word_pos = next_pos >> 6;
@@ -152,7 +152,7 @@ impl BitVector {
         }
         let pos_in_word: usize = buffer.trailing_zeros() as usize;
         next_pos += pos_in_word;
-        
+
         Some(next_pos)
     }
 
@@ -165,7 +165,7 @@ impl BitVector {
         let mut prev_pos = pos - 1;
         let mut word_pos = prev_pos >> 6;
         let mut buffer = self.data[word_pos] << (63 - (prev_pos % 64));
-        
+
         while buffer == 0 {
             if word_pos == 0 {
                 return None;
@@ -174,10 +174,10 @@ impl BitVector {
             prev_pos = (word_pos + 1) * 64 - 1;
             buffer = self.data[word_pos];
         }
-    
+
         let pos_in_word: usize = buffer.leading_zeros() as usize;
         prev_pos -= pos_in_word;
-    
+
         Some(prev_pos)
     }
 
@@ -215,7 +215,7 @@ pub struct UnaryIter<'a> {
 
 impl<'a> UnaryIter<'a> {
     // Creates the iterator from the given bit position
-    pub fn new(bv: &'a BitVector, pos: usize) -> UnaryIter {
+    pub fn new(bv: &BitVector, pos: usize) -> UnaryIter {
         let word_pos = pos >> 6;
         let buffer = if word_pos < bv.data.len() {
             bv.data[word_pos] >> (pos % 64)
@@ -283,7 +283,6 @@ impl<'a> UnaryIter<'a> {
 
         Some(self.pos - 1).filter(|&x| x < self.bv.position)
     }
-    
 
     #[inline(always)]
     pub fn pos(&self) -> usize {
@@ -295,7 +294,7 @@ pub struct UnaryIterOnes<'a> {
     iter: UnaryIter<'a>,
 }
 impl<'a> UnaryIterOnes<'a> {
-    pub fn new(bv: &'a BitVector, pos: usize) -> UnaryIterOnes {
+    pub fn new(bv: &BitVector, pos: usize) -> UnaryIterOnes {
         let iter = UnaryIter::new(bv, pos);
         UnaryIterOnes { iter }
     }
@@ -314,7 +313,7 @@ pub struct UnaryIterZeroes<'a> {
     iter: UnaryIter<'a>,
 }
 impl<'a> UnaryIterZeroes<'a> {
-    pub fn new(bv: &'a BitVector, pos: usize) -> UnaryIterZeroes {
+    pub fn new(bv: &BitVector, pos: usize) -> UnaryIterZeroes {
         let iter = UnaryIter::new(bv, pos);
         UnaryIterZeroes { iter }
     }
