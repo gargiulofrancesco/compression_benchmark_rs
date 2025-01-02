@@ -1,20 +1,20 @@
-use crate::longest_prefix_matcher::LongestPrefixMatcher;
+use crate::longest_prefix_matcher::lpm16::LongestPrefixMatcher;
 use super::Compressor;
 use rustc_hash::FxHashMap;
 
 const THRESHOLD: usize = 10;
 const MAX_LENGTH: usize = 16;
 
-pub struct OnPairCompressor {
+pub struct OnPair16Compressor {
     data: Vec<u16>,                             // Store the compressed data as token IDs
     item_end_positions: Vec<usize>,             // Store the end positions of each compressed item
     dictionary: Vec<u8>,                        // Store the dictionary
     dictionary_end_positions: Vec<u32>,         // Store the end positions of each element in the dictionary
 }
 
-impl Compressor for OnPairCompressor {
+impl Compressor for OnPair16Compressor {
     fn new(data_size: usize, n_elements: usize) -> Self {
-        OnPairCompressor {
+        OnPair16Compressor {
             data: Vec::with_capacity(data_size),
             item_end_positions: Vec::with_capacity(n_elements),
             dictionary: Vec::new(),
@@ -23,7 +23,7 @@ impl Compressor for OnPairCompressor {
     }
 
     fn compress(&mut self, data: &[u8], end_positions: &[usize]) {
-        let lpm = OnPairCompressor::train(data, end_positions);
+        let lpm = OnPair16Compressor::train(data, end_positions);
         self.parse(data, end_positions, &lpm);
     }
 
@@ -76,11 +76,11 @@ impl Compressor for OnPairCompressor {
     }
 
     fn name(&self) -> &str {
-        "On-Pair"
+        "On-Pair16"
     }
 }
 
-impl OnPairCompressor {
+impl OnPair16Compressor {
     fn train(data: &[u8], end_positions: &[usize]) -> LongestPrefixMatcher<u16> {
         let mut frequency: FxHashMap<(u16, u16), usize> = FxHashMap::default();
         let mut lpm = LongestPrefixMatcher::new();

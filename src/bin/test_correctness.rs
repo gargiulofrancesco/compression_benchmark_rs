@@ -5,6 +5,7 @@ use compression_benchmark_rs::compressor::snappy::SnappyCompressor;
 use compression_benchmark_rs::compressor::zstd::ZstdCompressor;
 use compression_benchmark_rs::compressor::bpe::BPECompressor;
 use compression_benchmark_rs::compressor::onpair::OnPairCompressor;
+use compression_benchmark_rs::compressor::onpair16::OnPair16Compressor;
 use compression_benchmark_rs::{compressor::Compressor, dataset::process_dataset, dataset::Dataset};
 use std::env;
 use std::fs;
@@ -18,6 +19,7 @@ enum CompressorEnum {
     Zstd(ZstdCompressor),
     BPE(BPECompressor), 
     OnPair(OnPairCompressor), 
+    OnPair16(OnPair16Compressor),
 }
 
 fn main() {
@@ -78,6 +80,9 @@ fn main() {
                     CompressorEnum::OnPair(compressor) => {
                         test(compressor, &data, &end_positions);
                     }
+                    CompressorEnum::OnPair16(compressor) => {
+                        test(compressor, &data, &end_positions);
+                    }
                 }
             }
         }
@@ -93,6 +98,7 @@ fn initialize_compressors(data_size: usize, n_elements: usize) -> Vec<Compressor
         CompressorEnum::Zstd(ZstdCompressor::new(data_size, n_elements)),
         CompressorEnum::BPE(BPECompressor::new(data_size, n_elements)),
         CompressorEnum::OnPair(OnPairCompressor::new(data_size, n_elements)),
+        CompressorEnum::OnPair16(OnPair16Compressor::new(data_size, n_elements)),
     ]
 }
 

@@ -1,4 +1,4 @@
-use crate::longest_prefix_matcher::LongestPrefixMatcher;
+use crate::longest_prefix_matcher::lpm::LongestPrefixMatcher;
 use super::Compressor;
 use rustc_hash::FxHashMap;
 

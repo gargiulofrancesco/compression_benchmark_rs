@@ -5,6 +5,7 @@ pub mod snappy;
 pub mod zstd;
 pub mod bpe;
 pub mod onpair;
+pub mod onpair16;
 
 const DEFAULT_BLOCK_SIZE: usize = 64 * 1024;  // 64 KB (a good range is from 4 KB to 128 KB)
 
