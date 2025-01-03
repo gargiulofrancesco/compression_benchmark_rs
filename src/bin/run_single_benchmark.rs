@@ -84,7 +84,8 @@ fn benchmark<T: Compressor>(
     end_positions: &[usize], 
     queries: &[usize]
 ) -> BenchmarkResult {
-    let mut buffer: Vec<u8> = vec![0; data.len() + 1024]; 
+    let mut buffer: Vec<u8> = Vec::with_capacity(data.len() + 1024);
+    buffer.resize(data.len() + 1024, 0);
 
     let data_bytes = data.len() as f64;
     let random_access_bytes: usize = queries.iter().map(|&i| {

@@ -53,7 +53,7 @@ This benchmark evaluates the random access performance of various compression al
 
 2. Build the project:
    ```bash
-   cargo build --release
+   RUSTFLAGS="-C target-cpu=native" cargo build --release
    ```
 
 3. Execute the desired benchmark or test executable as described in the **Executables** section.

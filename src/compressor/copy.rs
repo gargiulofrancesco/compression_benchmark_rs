@@ -7,9 +7,15 @@ pub struct CopyCompressor {
 
 impl Compressor for CopyCompressor {
     fn new(data_size: usize, n_elements: usize) -> Self {
+        let mut compressed_data = Vec::with_capacity(data_size);
+        compressed_data.resize(data_size, 0);
+        
+        let mut offsets = Vec::with_capacity(n_elements + 1);
+        offsets.resize(n_elements + 1, 0);
+        
         Self {
-            compressed_data: vec![0; data_size],
-            offsets: vec![0; n_elements + 1],
+            compressed_data,
+            offsets,
         }
     }
 
