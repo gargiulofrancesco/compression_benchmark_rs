@@ -7,7 +7,7 @@ use std::collections::BinaryHeap;
 use rustc_hash::{FxHashMap, FxHashSet};
 
 pub struct BPECompressor {
-    data: Vec<u16>,                             // Store the compressed data as bytes
+    compressed_data: Vec<u16>,                             // Store the compressed data as bytes
     item_end_positions: Vec<usize>,             // Store the end positions of each compressed item
     dictionary: Vec<u8>,                        // Store the dictionary
     dictionary_end_positions: Vec<u32>,         // Store the end positions of each element in the dictionary
@@ -16,7 +16,7 @@ pub struct BPECompressor {
 impl Compressor for BPECompressor {
     fn new(data_size: usize, n_elements: usize) -> Self {
         BPECompressor {
-            data: Vec::with_capacity(data_size),
+            compressed_data: Vec::with_capacity(data_size),
             item_end_positions: Vec::with_capacity(n_elements),
             dictionary: Vec::new(),
             dictionary_end_positions: Vec::new(),
@@ -40,20 +40,21 @@ impl Compressor for BPECompressor {
         self.item_end_positions.push(0);
         for end in compressed_strings_separators {
             for &token_id in compressed_strings[start..end].iter() {
-                self.data.push(token_id);
+                self.compressed_data.push(token_id);
             } 
-            self.item_end_positions.push(self.data.len());
+            self.item_end_positions.push(self.compressed_data.len());
             start = end;
         }
     }
 
-    fn decompress(&self, buffer: &mut Vec<u8>) {
+    fn decompress(&self, buffer: &mut [u8]) -> usize {
         unsafe {
-            let data_ptr = self.data.as_ptr();
+            let data_ptr = self.compressed_data.as_ptr();
             let dict_ptr = self.dictionary.as_ptr();
             let end_positions_ptr = self.dictionary_end_positions.as_ptr();
+            let mut size = 0;
     
-            for i in 0..self.data.len() {
+            for i in 0..self.compressed_data.len() {
                 let token_id = *data_ptr.add(i) as usize;
                 
                 // Access dictionary positions using raw pointers
@@ -63,27 +64,29 @@ impl Compressor for BPECompressor {
 
                 // Use SIMD to copy 16 bytes (128 bits) at a time to the buffer
                 let src_ptr = dict_ptr.add(dict_start) as *const __m128i;
-                let dst_ptr = buffer.as_mut_ptr().add(buffer.len()) as *mut __m128i;
+                let dst_ptr = buffer.as_mut_ptr().add(size) as *mut __m128i;
 
                 // Load 16 bytes from dictionary and store into buffer
                 let data = _mm_loadu_si128(src_ptr);
                 _mm_storeu_si128(dst_ptr, data);
 
-                // Update buffer length for each entry (assuming fixed 16 bytes here)
-                buffer.set_len(buffer.len() + length);
+                size += length;
             }
+            
+            size
         }
     }
 
-    fn get_item_at(&mut self, index: usize, buffer: &mut Vec<u8>) {
+    fn get_item_at(&mut self, index: usize, buffer: &mut [u8]) -> usize {
         unsafe {
             let start = *self.item_end_positions.as_ptr().add(index);
             let end = *self.item_end_positions.as_ptr().add(index + 1);
 
             // Set up raw pointers to data structures to avoid bounds checking
-            let data_ptr = self.data.as_ptr();
+            let data_ptr = self.compressed_data.as_ptr();
             let dict_ptr = self.dictionary.as_ptr();
             let end_positions_ptr = self.dictionary_end_positions.as_ptr();
+            let mut size = 0;
 
             for pos in start..end {
                 let token_id = *data_ptr.add(pos) as usize;
@@ -93,20 +96,21 @@ impl Compressor for BPECompressor {
 
                 // Use SIMD to copy 16 bytes (128 bits) at a time to the buffer
                 let src_ptr = dict_ptr.add(dict_start) as *const __m128i;
-                let dst_ptr = buffer.as_mut_ptr().add(buffer.len()) as *mut __m128i;
+                let dst_ptr = buffer.as_mut_ptr().add(size) as *mut __m128i;
 
                 // Load 16 bytes from dictionary and store into buffer
                 let data = _mm_loadu_si128(src_ptr);
                 _mm_storeu_si128(dst_ptr, data);
 
-                // Update buffer length for each entry (assuming fixed 16 bytes here)
-                buffer.set_len(buffer.len() + length);
+                size += length;
             }
+
+            size
         }
     }
 
     fn space_used_bytes(&self) -> usize {
-        (2 * self.data.len()) + self.dictionary.len() + (self.dictionary_end_positions.len() * 4)
+        (2 * self.compressed_data.len()) + self.dictionary.len() + (self.dictionary_end_positions.len() * 4)
     }
 
     fn name(&self) -> &str {

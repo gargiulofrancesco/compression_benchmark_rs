@@ -7,14 +7,6 @@ pub mod bpe;
 pub mod onpair;
 pub mod onpair16;
 
-const DEFAULT_BLOCK_SIZE: usize = 64 * 1024;  // 64 KB (a good range is from 4 KB to 128 KB)
-
-pub struct BlockMetadata {
-    pub end_position: usize,        // End position of this block in compressed data
-    pub num_items_psum: usize,      // Cumulative number of items up to this block
-    pub uncompressed_size: i32,     // Uncompressed size of this block
-}
-
 pub trait Compressor {
     /// Creates a new compressor allocating memory for the specified data size and number of elements.
     fn new(data_size: usize, n_elements: usize) -> Self;
@@ -22,11 +14,11 @@ pub trait Compressor {
     /// Compresses the provided data and stores it internally.
     fn compress(&mut self, data: &[u8], end_positions: &[usize]);
 
-    /// Decompresses the internally stored data and returns it.
-    fn decompress(&self, buffer: &mut Vec<u8>);
+    /// Decompresses the internally stored data and returns the number of decompressed bytes.
+    fn decompress(&self, buffer: &mut [u8]) -> usize;
 
-    /// Retrieves an item at the specified index with minimal decompression.
-    fn get_item_at(&mut self, index: usize, buffer: &mut Vec<u8>);
+    /// Retrieves the item at the specified index and returns its size in bytes.
+    fn get_item_at(&mut self, index: usize, buffer: &mut [u8]) -> usize;
 
     /// Returns the amount of space used by the compressed data in bytes.
     fn space_used_bytes(&self) -> usize;
@@ -35,12 +27,17 @@ pub trait Compressor {
     fn name(&self) -> &str;
 }
 
+const DEFAULT_BLOCK_SIZE: usize = 64 * 1024;  // 64 KB (a good range is from 4 KB to 128 KB)
+
+pub struct BlockMetadata {
+    pub end_position: usize,        // End position of this block in compressed data
+    pub num_items_psum: usize,      // Cumulative number of items up to this block
+    pub uncompressed_size: i32,     // Uncompressed size of this block
+}
+
 pub trait BlockCompressor: Compressor {
     /// Returns the block size (in bytes) used by this compressor.
     fn get_block_size(&self) -> usize;
-
-    /// Sets the block size used by this compressor.
-    fn set_block_size(&mut self, block_size: usize);
 
     /// Get the slice of compressed data.
     fn get_compressed_data(&self) -> &[u8];
@@ -54,11 +51,14 @@ pub trait BlockCompressor: Compressor {
     /// Get the slice of item end positions.
     fn get_item_end_positions(&self) -> &[usize];
 
+    /// Returns mutable item end positions.
+    fn get_item_end_positions_mut(&mut self) -> &mut Vec<usize>;
+
     /// Compresses a single block of data, returns the number of bytes of the compressed block.
     fn compress_block(&mut self, block: &[u8]) -> usize;
 
     /// Decompresses a single block of data into the provided buffer.
-    fn decompress_block(&self, compressed_data: &[u8], uncompressed_size: usize, buffer: &mut Vec<u8>);
+    fn decompress_block(&self, compressed_data: &[u8], uncompressed_size: usize, buffer: &mut [u8]);
 
     /// Decompresses a single block of data into the internal cache.
     fn decompress_block_to_cache(&mut self, block_index: usize);
@@ -73,6 +73,15 @@ pub trait BlockCompressor: Compressor {
     }
     
     fn compress(&mut self, data: &[u8], end_positions: &[usize]) {
+        // Copy end_positions to self.item_end_positions
+        unsafe {
+            let item_end_positions = self.get_item_end_positions_mut();
+            item_end_positions.set_len(end_positions.len());
+            let src = end_positions.as_ptr();
+            let dst = item_end_positions.as_mut_ptr();
+            std::ptr::copy_nonoverlapping(src, dst, end_positions.len());
+        }
+
         let block_size = self.get_block_size();
         let mut block_start = 0;            // Start of the current block
         let mut num_items_in_block = 0;     // Number of items in the current block
@@ -86,10 +95,8 @@ pub trait BlockCompressor: Compressor {
                 let block = &data[block_start..item_start];
                 let compressed_block_size = self.compress_block(block);
 
-                let end_position = self.get_blocks_metadata().last().map_or(0, |m| m.end_position)
-                    + compressed_block_size;
-                let num_items_psum = num_items_in_block + self.get_blocks_metadata().last()
-                    .map_or(0, |meta| meta.num_items_psum);  // Cumulative number of items
+                let end_position = self.get_blocks_metadata().last().map_or(0, |m| m.end_position) + compressed_block_size;
+                let num_items_psum = self.get_blocks_metadata().last().map_or(0, |meta| meta.num_items_psum) + num_items_in_block;
 
                 self.get_blocks_metadata_mut().push(BlockMetadata {
                     end_position,
@@ -111,10 +118,8 @@ pub trait BlockCompressor: Compressor {
             let block = &data[block_start..item_start];
             let compressed_block_size = self.compress_block(block);
 
-            let end_position = self.get_blocks_metadata().last().map_or(0, |m| m.end_position)
-                + compressed_block_size;
-            let num_items_psum = num_items_in_block + self.get_blocks_metadata().last()
-                .map_or(0, |meta| meta.num_items_psum);  // Cumulative number of items
+            let end_position = self.get_blocks_metadata().last().map_or(0, |m| m.end_position) + compressed_block_size;
+            let num_items_psum = self.get_blocks_metadata().last().map_or(0, |meta| meta.num_items_psum) + num_items_in_block;  // Cumulative number of items
 
             self.get_blocks_metadata_mut().push(BlockMetadata {
                 end_position,
@@ -125,24 +130,37 @@ pub trait BlockCompressor: Compressor {
     }
 
     /// Decompress all blocks.
-    fn decompress(&self, buffer: &mut Vec<u8>) {
+    fn decompress(&self, buffer: &mut [u8]) -> usize {
+        let mut total_size = 0;
+
         for (i, block_metadata) in self.get_blocks_metadata().iter().enumerate() {
             let start = if i == 0 { 0 } else { self.get_blocks_metadata()[i - 1].end_position };
             let end = block_metadata.end_position;
 
             let compressed_data = &self.get_compressed_data()[start..end];
-            self.decompress_block(compressed_data, block_metadata.uncompressed_size as usize, buffer);
+            self.decompress_block(compressed_data, block_metadata.uncompressed_size as usize, buffer[total_size..].as_mut());
+            total_size += block_metadata.uncompressed_size as usize;
         }
+
+        total_size
     }
 
     #[inline(always)]
-    fn get_item_at(&mut self, index: usize, buffer: &mut Vec<u8>) {
+    fn get_item_at(&mut self, index: usize, buffer: &mut [u8]) -> usize {
         let block_index = self.get_block_index(index);
         self.decompress_block_to_cache(block_index);
 
         let (item_start, item_end) = self.get_item_delimiters(block_index, index);
+        let item_size = item_end - item_start;
         let block_cache = self.get_block_cache();
-        buffer.extend_from_slice(&block_cache[item_start..item_end]);
+
+        unsafe {
+            let src = block_cache.as_ptr().add(item_start);
+            let dst = buffer.as_mut_ptr();
+            std::ptr::copy_nonoverlapping(src, dst, item_size);
+        }
+        
+        item_size
     }
 
     /// Returns the block index for a given item index.

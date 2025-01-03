@@ -6,10 +6,10 @@ use std::path::Path;
 use std::process::Command;
 use prettytable::{Table, row};
 
-const COMPRESSORS: [&str; 8] = ["copy", "fsst", "lz4", "snappy", "zstd", "bpe", "onpair", "onpair16"];
+const COMPRESSORS: [&str; 7] = ["copy", "lz4", "snappy", "zstd", "fsst", "onpair", "onpair16"];
 const BENCHMARK_PATH: &str = "./run_single_benchmark";
 const OUTPUT_FILE: &str = "benchmark_results.json";
-const N_ITERATIONS: usize = 5;
+const N_ITERATIONS: usize = 15;
 
 fn main() {
     // Get the command-line arguments
@@ -35,7 +35,7 @@ fn main() {
         fs::remove_file(OUTPUT_FILE).expect("Failed to remove existing results file");
     }
 
-    // Load all datasets from the specified directory
+    // Load datasets from the specified directory
     for entry in fs::read_dir(dir).unwrap() {
         let entry = entry.unwrap();
         let path = entry.path();
@@ -46,6 +46,7 @@ fn main() {
             println!("Processing dataset \"{}\"", dataset_path);
             
             for &compressor in COMPRESSORS.iter() {
+                println!("- {}", compressor);
                 for _ in 0..N_ITERATIONS {
                     // Execute the benchmark command
                     let status = Command::new(BENCHMARK_PATH)
@@ -65,7 +66,7 @@ fn main() {
 
     // Print the benchmark results
     let results = read_results(OUTPUT_FILE);
-    print_benchmark_results_with_averages(&results);
+    print_benchmark_results(&results);
 }
 
 fn read_results(file_path: &str) -> Vec<BenchmarkResult> {
@@ -80,7 +81,7 @@ fn read_results(file_path: &str) -> Vec<BenchmarkResult> {
     }
 }
 
-fn print_benchmark_results_with_averages(results: &[BenchmarkResult]) {
+fn print_benchmark_results(results: &[BenchmarkResult]) {
     // Group results by compressor and dataset name
     let mut grouped_results: HashMap<(String, String), Vec<&BenchmarkResult>> = HashMap::new();
     for result in results {

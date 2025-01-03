@@ -1,15 +1,15 @@
 use super::Compressor;
 
 pub struct FSSTCompressor {
-    data: Vec<u8>,                  // Store the "compressed" data as bytes
-    end_positions: Vec<usize>,      // Store the end positions of each element
+    compressed_data: Vec<u8>,               // Store the "compressed" data as bytes
+    end_positions: Vec<usize>,              // Store the end positions of each element
     compressor: Option<fsst::Compressor>,
 }
 
 impl Compressor for FSSTCompressor {
     fn new(data_size: usize, n_elements: usize) -> Self {
         Self {
-            data: Vec::with_capacity(data_size),
+            compressed_data: Vec::with_capacity(data_size),
             end_positions: Vec::with_capacity(n_elements + 1),
             compressor: None,
         }
@@ -21,33 +21,33 @@ impl Compressor for FSSTCompressor {
         self.end_positions.push(0);
 
         for text in lines {
-            unsafe { compressor.compress_append(text, &mut self.data); }
-            self.end_positions.push(self.data.len());
+            unsafe { compressor.compress_append(text, &mut self.compressed_data); }
+            self.end_positions.push(self.compressed_data.len());
         }
 
         self.compressor = Some(compressor);
     }
 
-    fn decompress(&self, buffer: &mut Vec<u8>) {
+    fn decompress(&self, buffer: &mut [u8]) -> usize {
         let decompressor = self.compressor.as_ref().unwrap().decompressor();
-        decompressor.decompress_into(&self.data, buffer);
+        decompressor.decompress_into(&self.compressed_data, buffer)
     }
 
     /// Retrieves an item starting at the specified index.
     #[inline(always)]
-    fn get_item_at(&mut self, index: usize, buffer: &mut Vec<u8>) {
+    fn get_item_at(&mut self, index: usize, buffer: &mut [u8]) -> usize {
         unsafe {
             let start = *self.end_positions.get_unchecked(index);
             let end = *self.end_positions.get_unchecked(index + 1);
-            let data = &self.data[start..end];
+            let data = &self.compressed_data[start..end];
             let decompressor = self.compressor.as_ref().unwrap().decompressor();
-            decompressor.decompress_into(data, buffer);
+            decompressor.decompress_into(data, buffer)
         }
     }
 
     fn space_used_bytes(&self) -> usize {
         let decompressor = self.compressor.as_ref().unwrap().decompressor();
-        self.data.len() + decompressor.space_used_bytes()
+        self.compressed_data.len() + decompressor.space_used_bytes()
     }
 
     fn name(&self) -> &str {

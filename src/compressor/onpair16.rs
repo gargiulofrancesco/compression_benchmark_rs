@@ -6,7 +6,7 @@ const THRESHOLD: usize = 10;
 const MAX_LENGTH: usize = 16;
 
 pub struct OnPair16Compressor {
-    data: Vec<u16>,                             // Store the compressed data as token IDs
+    compressed_data: Vec<u16>,                  // Store the compressed data as token IDs
     item_end_positions: Vec<usize>,             // Store the end positions of each compressed item
     dictionary: Vec<u8>,                        // Store the dictionary
     dictionary_end_positions: Vec<u32>,         // Store the end positions of each element in the dictionary
@@ -15,10 +15,10 @@ pub struct OnPair16Compressor {
 impl Compressor for OnPair16Compressor {
     fn new(data_size: usize, n_elements: usize) -> Self {
         OnPair16Compressor {
-            data: Vec::with_capacity(data_size),
+            compressed_data: Vec::with_capacity(data_size),
             item_end_positions: Vec::with_capacity(n_elements),
-            dictionary: Vec::new(),
-            dictionary_end_positions: Vec::new(),
+            dictionary: Vec::with_capacity(2 * (1024 * 1024)), // 2 MB
+            dictionary_end_positions: Vec::with_capacity(1 << 16),
         }
     }
 
@@ -27,56 +27,60 @@ impl Compressor for OnPair16Compressor {
         self.parse(data, end_positions, &lpm);
     }
 
-    fn decompress(&self, buffer: &mut Vec<u8>) {
+    fn decompress(&self, buffer: &mut [u8]) -> usize {
         let dict_ptr = self.dictionary.as_ptr();
         let end_positions_ptr = self.dictionary_end_positions.as_ptr();
+        let mut size = 0;
 
-        for &token_id in self.data.iter(){
+        for &token_id in self.compressed_data.iter(){
             unsafe {
                 // Access dictionary positions using raw pointers
                 let dict_start = *end_positions_ptr.add(token_id as usize) as usize;
                 let dict_end = *end_positions_ptr.add(token_id as usize + 1) as usize;
                 let length = dict_end - dict_start;
 
-                let src_ptr = dict_ptr.add(dict_start);
-                let dst_ptr = buffer.as_mut_ptr().add(buffer.len());
-                std::ptr::copy_nonoverlapping(src_ptr, dst_ptr, MAX_LENGTH);
+                let src = dict_ptr.add(dict_start);
+                let dst = buffer.as_mut_ptr().add(size);
+                std::ptr::copy_nonoverlapping(src, dst, MAX_LENGTH);
 
-                // Update buffer length for each entry
-                buffer.set_len(buffer.len() + length);
+                size += length;
             }
         }
+
+        size
     }
     
-    fn get_item_at(&mut self, index: usize, buffer: &mut Vec<u8>) {
-        let start = self.item_end_positions[index];
-        let end = self.item_end_positions[index + 1];
+    fn get_item_at(&mut self, index: usize, buffer: &mut [u8]) -> usize {
+        let item_start = self.item_end_positions[index];
+        let item_end = self.item_end_positions[index + 1];
         let dict_ptr = self.dictionary.as_ptr();
         let end_positions_ptr = self.dictionary_end_positions.as_ptr();
+        let mut size = 0;
 
-        for &token_id in &self.data[start..end] {
+        for &token_id in &self.compressed_data[item_start..item_end] {
             unsafe {
                 // Access dictionary positions using raw pointers
                 let dict_start = *end_positions_ptr.add(token_id as usize) as usize;
                 let dict_end = *end_positions_ptr.add(token_id as usize + 1) as usize;
                 let length = dict_end - dict_start;
 
-                let src_ptr = dict_ptr.add(dict_start);
-                let dst_ptr = buffer.as_mut_ptr().add(buffer.len());
-                std::ptr::copy_nonoverlapping(src_ptr, dst_ptr, MAX_LENGTH);
+                let src = dict_ptr.add(dict_start);
+                let dst = buffer.as_mut_ptr().add(size);
+                std::ptr::copy_nonoverlapping(src, dst, MAX_LENGTH);
 
-                // Update buffer length for each entry
-                buffer.set_len(buffer.len() + length);
+                size += length;
             }
         }
+
+        size
     }
 
     fn space_used_bytes(&self) -> usize {
-        (self.data.len() * std::mem::size_of::<u16>()) + self.dictionary.len() + (self.dictionary_end_positions.len() * std::mem::size_of::<u32>())
+        (self.compressed_data.len() * std::mem::size_of::<u16>()) + self.dictionary.len() + (self.dictionary_end_positions.len() * std::mem::size_of::<u32>())
     }
 
     fn name(&self) -> &str {
-        "On-Pair16"
+        "OnPair16"
     }
 }
 
@@ -142,13 +146,13 @@ impl OnPair16Compressor {
         self.dictionary_end_positions.push(0);
         self.item_end_positions.push(0);
     
-        let mut dictionary_map: Vec<Option<u16>> = vec![None; 1<<16];
+        let mut dictionary_map: Vec<u16> = vec![0xFFFF; 1<<16];
         let mut next_token_id = 0;
     
         let mut start = 0;
         for &end in end_positions.iter() {
             if start == end {
-                self.item_end_positions.push(self.data.len());
+                self.item_end_positions.push(self.compressed_data.len());
                 continue;
             }
     
@@ -156,23 +160,25 @@ impl OnPair16Compressor {
             while pos < end {
                 // Find the longest match
                 let (match_token_id, length) = lpm.find_longest_match(&data[pos..end]).unwrap();
+                let existing_token_id = dictionary_map[match_token_id as usize];
     
-                if let Some(existing_token_id) = dictionary_map[match_token_id as usize] {
-                    self.data.push(existing_token_id as u16);
-                } else {
-                    self.data.push(next_token_id as u16);
-                    dictionary_map[match_token_id as usize] = Some(next_token_id);
+                if existing_token_id != 0xFFFF {
+                    self.compressed_data.push(existing_token_id);
+                }
+                else {
+                    self.compressed_data.push(next_token_id as u16);
+                    dictionary_map[match_token_id as usize] = next_token_id;
     
                     self.dictionary.extend(&data[pos..pos + length]);
                     self.dictionary_end_positions.push(self.dictionary.len() as u32);
     
                     next_token_id += 1;
                 }
-    
+
                 pos += length;
             }
     
-            self.item_end_positions.push(self.data.len());
+            self.item_end_positions.push(self.compressed_data.len());
             start = end;
         }
     }    
