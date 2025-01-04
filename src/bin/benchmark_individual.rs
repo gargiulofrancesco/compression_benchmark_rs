@@ -1,5 +1,5 @@
+use compression_benchmark_rs::benchmark_utils::*;
 use compression_benchmark_rs::compressor::Compressor;
-use compression_benchmark_rs::dataset::*;
 use compression_benchmark_rs::compressor::copy::CopyCompressor;
 use compression_benchmark_rs::compressor::lz4::LZ4Compressor;
 use compression_benchmark_rs::compressor::snappy::SnappyCompressor;
@@ -7,7 +7,6 @@ use compression_benchmark_rs::compressor::zstd::ZstdCompressor;
 use compression_benchmark_rs::compressor::fsst::FSSTCompressor;
 use compression_benchmark_rs::compressor::onpair16::OnPair16Compressor;
 use compression_benchmark_rs::compressor::onpair::OnPairCompressor;
-use std::fs;
 use std::path::Path;
 use std::time::Instant;
 
@@ -74,7 +73,7 @@ fn main() {
     };
 
     // Append the result to the file
-    append_result_to_file(&result, Path::new(output_file));
+    append_benchmark_result(&result, Path::new(output_file));
 }
 
 fn benchmark<T: Compressor>(
@@ -141,22 +140,4 @@ fn benchmark<T: Compressor>(
         random_access_speed,
         average_random_access_time
     }
-}
-
-fn append_result_to_file(result: &BenchmarkResult, file_path: &Path) {
-    let mut results: Vec<BenchmarkResult> = if file_path.exists() {
-        // Read existing results from the file if it exists
-        let data = fs::read_to_string(file_path).expect("Failed to read file");
-        serde_json::from_str(&data).expect("Failed to deserialize existing results")
-    } else {
-        // If the file doesn't exist, start with an empty vector
-        Vec::new()
-    };
-
-    // Append the new result to the vector
-    results.push(result.clone());
-
-    // Serialize the vector and write it back to the file
-    let json = serde_json::to_string_pretty(&results).expect("Failed to serialize results");
-    fs::write(file_path, json).expect("Failed to write results to file");
 }

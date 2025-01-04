@@ -1,75 +1,77 @@
-use compression_benchmark_rs::dataset::BenchmarkResult;
+use prettytable::{row, Table};
+use serde::{Serialize, Deserialize};
 use std::collections::HashMap;
-use std::env;
 use std::fs;
 use std::path::Path;
-use std::process::Command;
-use prettytable::{Table, row};
 
-const COMPRESSORS: [&str; 7] = ["copy", "lz4", "snappy", "zstd", "fsst", "onpair", "onpair16"];
-const BENCHMARK_PATH: &str = "./run_single_benchmark";
-const OUTPUT_FILE: &str = "benchmark_results.json";
-const N_ITERATIONS: usize = 15;
+#[derive(Serialize, Deserialize, Clone)]
+pub struct BenchmarkResult {
+    pub dataset_name: String,
+    pub compressor_name: String,
+    pub compression_rate: f64,
+    pub compression_speed: f64,
+    pub decompression_speed: f64,
+    pub random_access_speed: f64,
+    pub average_random_access_time: f64,
+}
 
-fn main() {
-    // Get the command-line arguments
-    let args: Vec<String> = env::args().collect();
+/// Represents a single dataset.
+#[derive(Serialize, Deserialize, Debug)]
+pub struct Dataset {
+    pub dataset_name: String,
+    pub data: Vec<String>,
+    pub queries: Vec<usize>,
+}
 
-    // Check if a directory argument is provided
-    if args.len() < 2 {
-        eprintln!("Error: Missing directory argument. Usage is: {} <directory>", args[0]);
-        std::process::exit(1);
+impl Dataset {
+    /// Loads a dataset from a JSON file.
+    pub fn load<P: AsRef<Path>>(path: P) -> Self {
+        let content = fs::read_to_string(path).unwrap();
+        let mut dataset: Dataset = serde_json::from_str(&content).unwrap();
+
+        dataset.dataset_name.shrink_to_fit();
+        dataset.data.shrink_to_fit();
+        
+        dataset
     }
+}
 
-    let directory = &args[1];
-
-    // Check if the path is a valid directory
-    let dir = Path::new(directory);
-    if !dir.exists() || !dir.is_dir() {
-        eprintln!("Error: {} is not a valid directory.", directory);
-        std::process::exit(1);
-    }
-
-    // Remove existing results file if it exists
-    if Path::new(OUTPUT_FILE).exists() {
-        fs::remove_file(OUTPUT_FILE).expect("Failed to remove existing results file");
-    }
-
-    // Load datasets from the specified directory
+/// Loads all datasets from the specified directory.
+pub fn load_datasets<P: AsRef<Path>>(dir: P) -> Vec<Dataset> {
+    let mut datasets = Vec::new();
+    
+    // Read the directory
     for entry in fs::read_dir(dir).unwrap() {
         let entry = entry.unwrap();
         let path = entry.path();
         
         // Check if the path is a file and has a .json extension
         if path.is_file() && path.extension().map(|ext| ext == "json").unwrap_or(false) {
-            let dataset_path = path.to_str().unwrap();
-            println!("Processing dataset \"{}\"", dataset_path);
-            
-            for &compressor in COMPRESSORS.iter() {
-                println!("- {}", compressor);
-                for _ in 0..N_ITERATIONS {
-                    // Execute the benchmark command
-                    let status = Command::new(BENCHMARK_PATH)
-                        .arg(dataset_path)
-                        .arg(compressor)
-                        .arg(OUTPUT_FILE)
-                        .status()
-                        .expect("Failed to execute benchmark");
-                    
-                    if !status.success() {
-                        eprintln!("Benchmark failed for dataset '{}' with compressor '{}'.", dataset_path, compressor);
-                    }
-                }
-            }
+            // Load the dataset from the JSON file
+            let dataset = Dataset::load(&path);
+            datasets.push(dataset);
         }
     }
 
-    // Print the benchmark results
-    let results = read_results(OUTPUT_FILE);
-    print_benchmark_results(&results);
+    datasets
 }
 
-fn read_results(file_path: &str) -> Vec<BenchmarkResult> {
+/// Processes a dataset into a format that can be used by the compressors.
+pub fn process_dataset(dataset: &Dataset) -> (String, Vec<u8>, Vec<usize>, Vec<usize>) {
+    let dataset_name = dataset.dataset_name.clone();
+    let data: Vec<u8> = dataset.data.iter().flat_map(|s| s.as_bytes()).copied().collect();
+    let queries: Vec<usize> = dataset.queries.clone();
+    let end_positions: Vec<usize> = dataset.data.iter()
+        .scan(0, |state, s| {
+            *state += s.len();
+            Some(*state)
+        })
+        .collect();
+
+    (dataset_name, data, end_positions, queries)
+}
+
+pub fn read_benchmark_results(file_path: &str) -> Vec<BenchmarkResult> {
     if Path::new(file_path).exists() {
         let file_content = fs::read_to_string(file_path).expect("Failed to read file");
         serde_json::from_str::<Vec<BenchmarkResult>>(&file_content).unwrap_or_else(|_| {
@@ -81,7 +83,25 @@ fn read_results(file_path: &str) -> Vec<BenchmarkResult> {
     }
 }
 
-fn print_benchmark_results(results: &[BenchmarkResult]) {
+pub fn append_benchmark_result(result: &BenchmarkResult, file_path: &Path) {
+    let mut results: Vec<BenchmarkResult> = if file_path.exists() {
+        // Read existing results from the file if it exists
+        let data = fs::read_to_string(file_path).expect("Failed to read file");
+        serde_json::from_str(&data).expect("Failed to deserialize existing results")
+    } else {
+        // If the file doesn't exist, start with an empty vector
+        Vec::new()
+    };
+
+    // Append the new result to the vector
+    results.push(result.clone());
+
+    // Serialize the vector and write it back to the file
+    let json = serde_json::to_string_pretty(&results).expect("Failed to serialize results");
+    fs::write(file_path, json).expect("Failed to write results to file");
+}
+
+pub fn print_benchmark_results(results: &[BenchmarkResult]) {
     // Group results by compressor and dataset name
     let mut grouped_results: HashMap<(String, String), Vec<&BenchmarkResult>> = HashMap::new();
     for result in results {
