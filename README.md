@@ -4,45 +4,6 @@ This benchmark evaluates the random access performance of various compression al
 
 ## Contents
 
-### Executables
-
-1. **`test_correctness.rs`**
-   - **Purpose**: Verifies the correctness of the compression and decompression algorithms.
-   - **Usage**:
-     ```bash
-     cargo run --bin test_correctness
-     ```
-     This test ensures that compressed data can be decompressed back to its original form without errors.
-
-2. **`benchmark_individual.rs`**
-   - **Purpose**: Measures the performance of a single compression algorithm on a specified file.
-   - **Usage**:
-     ```bash
-     cargo run --bin benchmark_individual <algorithm> <input_file>
-     ```
-     - `<algorithm>`: The name of the compression algorithm to benchmark (e.g., `zstd`).
-     - `<input_file>`: Path to the file you want to compress and analyze.
-
-     Example:
-     ```bash
-     cargo run --bin benchmark_individual zstd dataset.json
-     ```
-     This command benchmarks the `zstd` algorithm on the dataset file `dataset.json`.
-
-3. **`benchmark_all.rs`**
-   - **Purpose**: Compares the performance of multiple compression algorithms across datasets in a folder.
-   - **Usage**:
-     ```bash
-     cargo run --bin benchmark_all <input_directory>
-     ```
-     - `<input_directory>`: Path to the folder containing datasets for benchmarking.
-
-     Example:
-     ```bash
-     cargo run --bin benchmark_all ./datasets/
-     ```
-     This command benchmarks several compression algorithms on the dataset files contained in `./datasets/` and provides a performance comparison.
-
 ### How to Run
 
 1. Clone the repository:
@@ -54,9 +15,41 @@ This benchmark evaluates the random access performance of various compression al
 2. Build the project:
    ```bash
    RUSTFLAGS="-C target-cpu=native" cargo build --release
+   cd target/release
    ```
 
 3. Execute the desired benchmark or test executable as described in the **Executables** section.
+
+### Executables
+
+1. **`benchmark_individual.rs`**
+   - **Purpose**: Measures the performance of a single compression algorithm on a specified file.
+   - **Usage**:
+     ```bash
+     ./benchmark_individual <algorithm> <input_file>
+     ```
+     - `<algorithm>`: The name of the compression algorithm to benchmark (e.g., `zstd`).
+     - `<input_file>`: Path to the file you want to compress and analyze.
+
+     Example:
+     ```bash
+     ./benchmark_individual zstd dataset.json
+     ```
+     This command benchmarks the `zstd` algorithm on the dataset file `dataset.json`.
+
+2. **`benchmark_all.rs`**
+   - **Purpose**: Compares the performance of multiple compression algorithms across datasets in a folder.
+   - **Usage**:
+     ```bash
+     ./benchmark_all <input_directory>
+     ```
+     - `<input_directory>`: Path to the folder containing datasets for benchmarking.
+
+     Example:
+     ```bash
+     ./benchmark_all ./datasets/
+     ```
+     This command benchmarks several compression algorithms on the dataset files contained in `./datasets/` and provides a performance comparison.
 
 ### Dataset Format
 
