@@ -3,6 +3,7 @@ use serde::{Serialize, Deserialize};
 use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
+use libc::{self, cpu_set_t, CPU_SET, CPU_ZERO};
 
 #[derive(Serialize, Deserialize, Clone)]
 pub struct BenchmarkResult {
@@ -195,5 +196,17 @@ pub fn print_benchmark_results(results: &[BenchmarkResult]) {
         // Print the table for this compressor
         println!("\nResults for Compressor: {}", compressor);
         table.printstd();
+    }
+}
+
+pub fn set_affinity(core_id: usize) {
+    unsafe {
+        let mut cpuset: cpu_set_t = std::mem::zeroed();
+        CPU_ZERO(&mut cpuset);
+        CPU_SET(core_id, &mut cpuset);
+        
+        if libc::sched_setaffinity(0, std::mem::size_of::<cpu_set_t>(), &cpuset) != 0 {
+            println!("sched_setaffinity failed");
+        }
     }
 }

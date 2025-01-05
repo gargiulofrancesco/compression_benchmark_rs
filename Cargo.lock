@@ -80,6 +80,7 @@ dependencies = [
  "brotli",
  "flate2",
  "fsst-rs",
+ "libc",
  "lz4",
  "prettytable",
  "rand",

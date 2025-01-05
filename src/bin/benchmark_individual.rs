@@ -10,6 +10,8 @@ use compression_benchmark_rs::compressor::onpair::OnPairCompressor;
 use std::path::Path;
 use std::time::Instant;
 
+const DEFAULT_CORE_ID: usize = 0;
+
 enum CompressorEnum {
     Copy(CopyCompressor),
     LZ4(LZ4Compressor),
@@ -24,13 +26,18 @@ fn main() {
     let args: Vec<String> = std::env::args().collect();
 
     if args.len() < 4 {
-        eprintln!("Usage: {} <dataset_path> <compressor_name> <output_file>", args[0]);
+        eprintln!("Usage: {} <dataset_path> <compressor_name> <output_file> [core_id]", args[0]);
         std::process::exit(1);
     }
 
     let dataset_path = &args[1];
     let compressor_name = &args[2];
     let output_file = &args[3];
+    let core_id = if args.len() > 4 {
+        args[4].parse::<usize>().unwrap_or(DEFAULT_CORE_ID)
+    } else {
+        DEFAULT_CORE_ID
+    };
 
     // Check if dataset path exists and is a file
     let dataset_path = Path::new(dataset_path);
@@ -42,6 +49,9 @@ fn main() {
         eprintln!("Error: Dataset path '{}' is not a file.", dataset_path.display());
         std::process::exit(1);
     }
+
+    // Set CPU affinity
+    set_affinity(core_id);
 
     // Load dataset
     let dataset = Dataset::load(dataset_path);

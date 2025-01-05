@@ -10,12 +10,12 @@ struct Compression {
 }
 
 const COMPRESSIONS: [Compression; 6] = [
-    Compression { name: "deflate", level: &[1, 6, 9] },
-    Compression { name: "brotli", level: &[1, 3, 6] },
-    Compression { name: "zstd", level: &[1, 3, 6, 9, 12] },
-    Compression { name: "lz4", level: &[0, 1, 3, 6, 9, 12] },
+    Compression { name: "deflate", level: &[3, 6] },
+    Compression { name: "brotli", level: &[3, 6] },
+    Compression { name: "zstd", level: &[3, 6] },
+    Compression { name: "lz4", level: &[0, 3, 6] },
     Compression { name: "snappy", level: &[0] },
-    Compression { name: "xz", level: &[1, 3] },
+    Compression { name: "xz", level: &[1] },
 ];
 const BENCHMARK_PATH: &str = "./estimate_individual";
 const OUTPUT_FILE: &str = "compressibility_estimate_results.json";

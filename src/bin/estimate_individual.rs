@@ -5,13 +5,15 @@ use std::io::{Read, Write};
 use std::time::Instant;
 use std::path::Path;
 
+const DEFAULT_CORE_ID: usize = 0;
+
 fn main() {
     // Get the command-line arguments
     let args: Vec<String> = env::args().collect();
 
     // Check if a directory argument is provided
     if args.len() < 5 {
-        eprintln!("Usage: {} <dataset_path> <compressor_name> <compression_level> <output_file>\n", args[0]);
+        eprintln!("Usage: {} <dataset_path> <compressor_name> <compression_level> <output_file> [core_id]\n", args[0]);
         std::process::exit(1);
     }
 
@@ -19,6 +21,11 @@ fn main() {
     let compressor_name = &args[2];
     let compression_level = args[3].parse::<i32>().unwrap();
     let output_file = &args[4];
+    let core_id = if args.len() > 5 {
+        args[5].parse::<usize>().unwrap()
+    } else {
+        DEFAULT_CORE_ID
+    };
 
     // Check if dataset path exists and is a file
     let dataset_path = Path::new(dataset_path);
@@ -30,6 +37,9 @@ fn main() {
         eprintln!("Error: Dataset path '{}' is not a file.", dataset_path.display());
         std::process::exit(1);
     }
+
+    // Set CPU affinity
+    set_affinity(core_id);
 
     // Load dataset
     let dataset = Dataset::load(dataset_path);
@@ -117,7 +127,7 @@ fn compress_brotli(dataset_name: &str, data: &[u8], compression_level: i32) -> B
 
     BenchmarkResult {
         dataset_name: dataset_name.to_string(),
-        compressor_name: format!("Brotli -{}", compression_level),
+        compressor_name: format!("brotli -{}", compression_level),
         compression_rate,
         compression_speed,
         decompression_speed,
@@ -197,7 +207,7 @@ fn compress_lz4(dataset_name: &str, data: &[u8], compression_level: i32) -> Benc
 
     BenchmarkResult {
         dataset_name: dataset_name.to_string(),
-        compressor_name: format!("LZ4 -{}", compression_level),
+        compressor_name: format!("lz4 -{}", compression_level),
         compression_rate,
         compression_speed,
         decompression_speed,
@@ -234,7 +244,7 @@ fn compress_snappy(dataset_name: &str, data: &[u8]) -> BenchmarkResult {
 
     BenchmarkResult {
         dataset_name: dataset_name.to_string(),
-        compressor_name: "Snappy".to_string(),
+        compressor_name: "snappy".to_string(),
         compression_rate,
         compression_speed,
         decompression_speed,
