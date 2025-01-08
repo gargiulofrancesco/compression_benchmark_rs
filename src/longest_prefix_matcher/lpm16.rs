@@ -1,4 +1,5 @@
 use rustc_hash::FxHashMap;
+use serde::{Serialize, Deserialize};
 
 const MASKS: [u64; 9] = [
     0x0000000000000000, // 0 bytes
@@ -12,6 +13,7 @@ const MASKS: [u64; 9] = [
     0xFFFFFFFFFFFFFFFF, // 8 bytes
 ];
 
+#[derive(Serialize, Deserialize)]
 pub struct LongestPrefixMatcher<V> {
     dictionary: FxHashMap<(u64, u8), V>, 
     buckets: FxHashMap<u64, Vec<((u64, u8), V)>>, 
