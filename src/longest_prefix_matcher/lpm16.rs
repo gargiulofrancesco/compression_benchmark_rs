@@ -64,9 +64,9 @@ where
         }
 
         // Short match handling
+        let mut prefix = bytes_to_u64_le(&data, 8);
         for length in (1..=8.min(data.len())).rev() {
-            let prefix = bytes_to_u64_le(&data, length);
-            
+            prefix = prefix & MASKS[length];
             if let Some(&id) = self.dictionary.get(&(prefix, length as u8)) {
                 return Some((id, length));
             }
