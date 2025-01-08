@@ -1,5 +1,4 @@
 pub mod copy;
-pub mod fsst;
 pub mod lz4;
 pub mod snappy;
 pub mod zstd;

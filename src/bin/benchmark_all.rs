@@ -4,7 +4,7 @@ use std::fs;
 use std::path::Path;
 use std::process::Command;
 
-const COMPRESSORS: [&str; 6] = ["copy", "lz4", "snappy", "zstd", "fsst", "onpair16"];
+const COMPRESSORS: [&str; 5] = ["copy", "lz4", "snappy", "zstd", "onpair16"];
 const BENCHMARK_PATH: &str = "./benchmark_individual";
 const OUTPUT_FILE: &str = "benchmark_results.json";
 const N_ITERATIONS: usize = 15;

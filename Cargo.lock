@@ -79,7 +79,6 @@ version = "0.1.0"
 dependencies = [
  "brotli",
  "flate2",
- "fsst-rs",
  "libc",
  "lz4",
  "prettytable",
@@ -158,11 +157,6 @@ dependencies = [
  "crc32fast",
  "miniz_oxide",
 ]
-
-[[package]]
-name = "fsst-rs"
-version = "0.4.3"
-source = "git+https://github.com/gargiulofrancesco/fsst?branch=develop#8342aff0ea367bac5b36633737e83eaff2da3a9e"
 
 [[package]]
 name = "getrandom"

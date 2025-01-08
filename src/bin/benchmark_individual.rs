@@ -4,7 +4,6 @@ use compression_benchmark_rs::compressor::copy::CopyCompressor;
 use compression_benchmark_rs::compressor::lz4::LZ4Compressor;
 use compression_benchmark_rs::compressor::snappy::SnappyCompressor;
 use compression_benchmark_rs::compressor::zstd::ZstdCompressor;
-use compression_benchmark_rs::compressor::fsst::FSSTCompressor;
 use compression_benchmark_rs::compressor::onpair16::OnPair16Compressor;
 use compression_benchmark_rs::compressor::onpair::OnPairCompressor;
 use std::path::Path;
@@ -17,7 +16,6 @@ enum CompressorEnum {
     LZ4(LZ4Compressor),
     Snappy(SnappyCompressor),
     Zstd(ZstdCompressor),
-    FSST(FSSTCompressor),
     OnPair(OnPairCompressor), 
     OnPair16(OnPair16Compressor),
 }
@@ -63,7 +61,6 @@ fn main() {
         "lz4" => CompressorEnum::LZ4(LZ4Compressor::new(data.len(), end_positions.len())),
         "snappy" => CompressorEnum::Snappy(SnappyCompressor::new(data.len(), end_positions.len())),
         "zstd" => CompressorEnum::Zstd(ZstdCompressor::new(data.len(), end_positions.len())),
-        "fsst" => CompressorEnum::FSST(FSSTCompressor::new(data.len(), end_positions.len())),
         "onpair" => CompressorEnum::OnPair(OnPairCompressor::new(data.len(), end_positions.len())),
         "onpair16" => CompressorEnum::OnPair16(OnPair16Compressor::new(data.len(), end_positions.len())),
         _ => {
@@ -77,7 +74,6 @@ fn main() {
         CompressorEnum::LZ4(ref mut c) => benchmark(c, dataset_name, &data, &end_positions, &queries),
         CompressorEnum::Snappy(ref mut c) => benchmark(c, dataset_name, &data, &end_positions, &queries),
         CompressorEnum::Zstd(ref mut c) => benchmark(c, dataset_name, &data, &end_positions, &queries),
-        CompressorEnum::FSST(ref mut c) => benchmark(c, dataset_name, &data, &end_positions, &queries),
         CompressorEnum::OnPair(ref mut c) => benchmark(c, dataset_name, &data, &end_positions, &queries),
         CompressorEnum::OnPair16(ref mut c) => benchmark(c, dataset_name, &data, &end_positions, &queries),
     };
