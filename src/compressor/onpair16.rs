@@ -23,7 +23,7 @@ impl Compressor for OnPair16Compressor {
     }
 
     fn compress(&mut self, data: &[u8], end_positions: &[usize]) {
-        let lpm = OnPair16Compressor::train(data, end_positions);
+        let lpm = self.train(data, end_positions);
         self.parse(data, end_positions, &lpm);
     }
 
@@ -85,7 +85,9 @@ impl Compressor for OnPair16Compressor {
 }
 
 impl OnPair16Compressor {
-    fn train(data: &[u8], end_positions: &[usize]) -> LongestPrefixMatcher<u16> {
+    fn train(&mut self, data: &[u8], end_positions: &[usize]) -> LongestPrefixMatcher<u16> {
+        self.dictionary_end_positions.push(0);
+
         let mut frequency: FxHashMap<(u16, u16), usize> = FxHashMap::default();
         let mut lpm = LongestPrefixMatcher::new();
         let mut next_token_id = 256;
@@ -94,6 +96,8 @@ impl OnPair16Compressor {
         for i in 0..256 {
             let token = vec![i as u8];
             lpm.insert(&token, i as u16);
+            self.dictionary.extend(&token);
+            self.dictionary_end_positions.push(self.dictionary.len() as u32);
         }
 
         let mut start = 0;
@@ -125,6 +129,9 @@ impl OnPair16Compressor {
                     if frequency[&(previous_token_id, match_token_id)] > THRESHOLD {
                         let merged_token = &data[pos - previous_length..pos + match_length];
                         lpm.insert(merged_token, next_token_id);
+                        self.dictionary.extend(merged_token);
+                        self.dictionary_end_positions.push(self.dictionary.len() as u32);
+
                         next_token_id += 1;
                         frequency.remove(&(previous_token_id, match_token_id));
                     }
@@ -142,14 +149,10 @@ impl OnPair16Compressor {
     }
     
     fn parse(&mut self, data: &[u8], end_positions: &[usize], lpm: &LongestPrefixMatcher<u16>) {
-        // Initialize dictionary metadata
-        self.dictionary_end_positions.push(0);
         self.item_end_positions.push(0);
     
-        let mut dictionary_map: Vec<u16> = vec![0xFFFF; 1<<16];
-        let mut next_token_id = 0;
-    
         let mut start = 0;
+
         for &end in end_positions.iter() {
             if start == end {
                 self.item_end_positions.push(self.compressed_data.len());
@@ -159,22 +162,8 @@ impl OnPair16Compressor {
             let mut pos = start;
             while pos < end {
                 // Find the longest match
-                let (match_token_id, length) = lpm.find_longest_match(&data[pos..end]).unwrap();
-                let existing_token_id = dictionary_map[match_token_id as usize];
-    
-                if existing_token_id != 0xFFFF {
-                    self.compressed_data.push(existing_token_id);
-                }
-                else {
-                    self.compressed_data.push(next_token_id as u16);
-                    dictionary_map[match_token_id as usize] = next_token_id;
-    
-                    self.dictionary.extend(&data[pos..pos + length]);
-                    self.dictionary_end_positions.push(self.dictionary.len() as u32);
-    
-                    next_token_id += 1;
-                }
-
+                let (token_id, length) = lpm.find_longest_match(&data[pos..end]).unwrap();
+                self.compressed_data.push(token_id);
                 pos += length;
             }
     
