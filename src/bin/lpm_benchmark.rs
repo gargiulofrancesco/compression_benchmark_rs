@@ -41,6 +41,11 @@ fn main() {
     // `parse_lengths[i]` is the correct length of the i-th `find_longest_match` funcion call
     let (data, end_positions, parse_lengths, lpm) = deserialize(dataset_name);
 
+    let file_size = parse_lengths
+        .iter()
+        .map(|length| *length as usize)
+        .sum::<usize>();
+
     println!("Please skip {:?}", start.elapsed());
 
     let start = Instant::now();
@@ -63,9 +68,14 @@ fn main() {
             start = end;
         }
     }
+
+    let time = start.elapsed().as_secs_f64() / N_ITERATIONS as f64;
+
+    println!("Time to parse per iteration: {:.2}", time);
+
     println!(
-        "Time to parse per iteration: {:?}",
-        start.elapsed() / N_ITERATIONS as u32
+        "Throughput: {:.2} MB/s",
+        file_size as f64 / time / 1024.0 / 1024.0
     );
 
     if useless == 42 {
