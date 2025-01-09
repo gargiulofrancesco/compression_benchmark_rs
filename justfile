@@ -4,11 +4,11 @@ compress:
 
 perf_bench:
     RUSTFLAGS="-C target-cpu=native" cargo build --release
-    perf stat -D 300 -e cycles,branches,branch-misses,L1-dcache-load-misses,LLC-loads,LLC-load-misses  ./target/release/lpm_benchmark book_reviews
+    perf stat -D 300 -e cycles,branches,branch-misses,L1-dcache-loads,L1-dcache-load-misses,LLC-loads,LLC-load-misses  ./target/release/lpm_benchmark book_reviews
 
 perf_record_bench:
     RUSTFLAGS="-C target-cpu=native" cargo build --release
-    perf record -D 300 -e cycles,branches,branch-misses,L1-dcache-load-misses,LLC-loads,LLC-load-misses  ./target/release/lpm_benchmark book_reviews
+    perf record -D 300 -e cycles,branches,branch-misses,L1-dcache-loads,L1-dcache-load-misses,LLC-loads,LLC-load-misses  ./target/release/lpm_benchmark book_reviews
 
 perf_stalls_bench:
     RUSTFLAGS="-C target-cpu=native" cargo build --release
