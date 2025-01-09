@@ -1,22 +1,24 @@
 use compression_benchmark_rs::longest_prefix_matcher::lpm16::LongestPrefixMatcher;
 use std::env;
 use std::fs::{self, File};
+use std::time::Instant;
 
-const N_ITERATIONS: usize = 10;
+const N_ITERATIONS: usize = 5;
 
 fn deserialize(dataset_name: &str) -> (Vec<u8>, Vec<usize>, Vec<u8>, LongestPrefixMatcher<u16>) {
-    let base_path = "/home/gargiulo/data/lpm_bench/";
+    let base_path = "/home/rossano/data/lpm_bench";
     let dataset_folder = format!("{}/{}", base_path, dataset_name);
 
     let data_path = format!("{}/data.bin", dataset_folder);
+    println!("{}", data_path);
     let end_positions_path = format!("{}/end_positions.bin", dataset_folder);
-    let parse_lengths_path = format!("{}/parse_lengths.bin", dataset_folder);    
+    let parse_lengths_path = format!("{}/parse_lengths.bin", dataset_folder);
     let lpm_path = format!("{}/lpm.bin", dataset_folder);
 
     let data = fs::read(data_path).unwrap();
     let parse_lengths = fs::read(parse_lengths_path).unwrap();
     let lpm = bincode::deserialize_from(File::open(lpm_path).unwrap()).unwrap();
-    
+
     let end_positions_temp = fs::read(end_positions_path).unwrap();
     let end_positions: Vec<usize> = end_positions_temp
         .chunks_exact(4)
@@ -27,6 +29,7 @@ fn deserialize(dataset_name: &str) -> (Vec<u8>, Vec<usize>, Vec<u8>, LongestPref
 }
 
 fn main() {
+    let start = Instant::now();
     let args: Vec<String> = env::args().collect();
 
     if args.len() != 2 {
@@ -38,6 +41,9 @@ fn main() {
     // `parse_lengths[i]` is the correct length of the i-th `find_longest_match` funcion call
     let (data, end_positions, parse_lengths, lpm) = deserialize(dataset_name);
 
+    println!("Please skip {:?}", start.elapsed());
+
+    let start = Instant::now();
     // Benchmark parsing
     let mut useless: usize = 0;
     for _ in 0..N_ITERATIONS {
@@ -57,6 +63,10 @@ fn main() {
             start = end;
         }
     }
+    println!(
+        "Time to parse per iteration: {:?}",
+        start.elapsed() / N_ITERATIONS as u32
+    );
 
     if useless == 42 {
         println!("very unlikely to happen");
