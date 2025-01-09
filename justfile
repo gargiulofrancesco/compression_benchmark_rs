@@ -4,15 +4,15 @@ compress:
 
 perf_bench:
     RUSTFLAGS="-C target-cpu=native" cargo build --release
-    perf stat -D 300 -e cycles,branches,branch-misses,L1-dcache-loads,L1-dcache-load-misses,LLC-loads,LLC-load-misses  ./target/release/lpm_benchmark book_reviews
+    perf stat -D 500 -e cycles,branches,branch-misses,L1-dcache-loads,L1-dcache-load-misses,LLC-loads,LLC-load-misses  ./target/release/lpm_benchmark book_reviews
 
 perf_record_bench:
     RUSTFLAGS="-C target-cpu=native" cargo build --release
-    perf record -D 300 -e cycles,branches,branch-misses,L1-dcache-loads,L1-dcache-load-misses,LLC-loads,LLC-load-misses  ./target/release/lpm_benchmark book_reviews
+    perf record -D 500 -e cycles,branches,branch-misses,L1-dcache-loads,L1-dcache-load-misses,LLC-loads,LLC-load-misses  ./target/release/lpm_benchmark book_reviews
 
 perf_stalls_bench:
     RUSTFLAGS="-C target-cpu=native" cargo build --release
-    perf stat -D 300 -e CYCLE_ACTIVITY.STALLS_L1D_MISS,CYCLE_ACTIVITY.STALLS_L2_MISS,CYCLE_ACTIVITY.STALLS_L3_MISS,CYCLE_ACTIVITY.STALLS_MEM_ANY,RESOURCE_STALLS.ANY ./target/release/lpm_benchmark book_reviews
+    perf stat -D 500 -e CYCLE_ACTIVITY.STALLS_L1D_MISS,CYCLE_ACTIVITY.STALLS_L2_MISS,CYCLE_ACTIVITY.STALLS_L3_MISS,CYCLE_ACTIVITY.STALLS_MEM_ANY,RESOURCE_STALLS.ANY ./target/release/lpm_benchmark book_reviews
 
 perf:
     RUSTFLAGS="-C target-cpu=native" cargo build --release
