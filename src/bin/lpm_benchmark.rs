@@ -1,4 +1,6 @@
-use compression_benchmark_rs::longest_prefix_matcher::lpm16::LongestPrefixMatcher;
+use compression_benchmark_rs::longest_prefix_matcher::lpm16::{
+    LongestPrefixMatcher, StaticLongestPrefixMatcher,
+};
 use std::env;
 use std::fs::{self, File};
 use std::time::Instant;
@@ -45,6 +47,13 @@ fn main() {
         .iter()
         .map(|length| *length as usize)
         .sum::<usize>();
+    println!(
+        "File size: {} {}",
+        file_size,
+        *end_positions.last().unwrap()
+    );
+
+    let lpm = StaticLongestPrefixMatcher::from(lpm);
 
     println!("Please skip {:?}", start.elapsed());
 
@@ -53,6 +62,7 @@ fn main() {
     let mut useless: usize = 0;
     for _ in 0..N_ITERATIONS {
         let mut start: usize = 0;
+        let mut i = 0;
         for &end in end_positions.iter() {
             if start == end {
                 continue;
@@ -60,9 +70,12 @@ fn main() {
 
             let mut pos: usize = start;
             while pos < end {
-                let (id, length) = lpm.find_longest_match(&data[pos..end]).unwrap();
-                pos += length;
+                let true_length = parse_lengths[i];
+                let (id, _length) = lpm.find_longest_match(&data[pos..end]).unwrap();
+                // assert_eq!(_length, true_length as usize);
+                pos += true_length as usize;
                 useless = useless.wrapping_add(id as usize);
+                i += 1;
             }
 
             start = end;
