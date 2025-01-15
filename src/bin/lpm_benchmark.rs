@@ -72,7 +72,7 @@ fn main() {
             while pos < end {
                 let true_length = parse_lengths[i];
                 let (id, _length) = lpm.find_longest_match(&data[pos..end]).unwrap();
-                // assert_eq!(_length, true_length as usize);
+                assert_eq!(_length, true_length as usize);
                 pos += true_length as usize;
                 useless = useless.wrapping_add(id as usize);
                 i += 1;

@@ -1,7 +1,17 @@
-use brotli::dictionary;
 use rustc_hash::FxHashMap;
 use serde::{Deserialize, Serialize};
 use std::arch::x86_64::*;
+
+use bucket_fn::{BucketFn, Linear};
+use cacheline_ef::CachelineEfVec;
+use ptr_hash::{hash::*, PtrHash, PtrHashParams, Sharding};
+use ptr_hash::{
+    hash::{Hasher, Murmur2_64},
+    pack::Packed,
+    *,
+};
+use std::collections::{HashMap, HashSet};
+type PH<Key, BF> = PtrHash<Key, BF, CachelineEfVec, hash::FxHash, Vec<u8>>;
 
 const MASKS: [u64; 9] = [
     0x0000000000000000, // 0 bytes
@@ -18,19 +28,19 @@ const MASKS: [u64; 9] = [
 // 2+2+1+8+8+2+2+1=26 bytes but it uses 32 bytes due to alignments. When add key, it'll be 34. need to save 2 bytes
 // 20000*26=520000 bytes = 520KB
 
-#[derive(Copy, Clone)]
+#[derive(Default, Copy, Clone)]
 struct InfoLongMatch<V>
 where
     V: Copy + Default + Into<usize>,
 {
-    //key: u64, // Needed when using perfecth hashing
+    key: u64, // Needed when using perfect hashing
     answer_id: V,
     answer_length: u8,
-    base_id: V,                  // if of the first element in the block
-    first_suffixes: [u64; 2], // first suffix and second suffix. The first suffix id is base_id - 1, secondo suffix id is base_id-2. So, if second one does not exist, it is equal to the first one and its id is not wasted.
-    first_suffixes_len: [u8; 2], // first suffix length and second suffix length
-    offset: u16,              // offset in the buckets_suffix and buckets_length
-    number_suffixes: u8,      // number of suffixes in the block
+    base_id: V,             // if of the first element in the block
+    first_suffixes: u64, //[u64; 2], // first suffix and second suffix. The first suffix id is base_id - 1, secondo suffix id is base_id-2. So, if second one does not exist, it is equal to the first one and its id is not wasted.
+    first_suffixes_len: u8, //[u8; 2], // first suffix length and second suffix length
+    offset: u16,         // offset in the buckets_suffix and buckets_length
+    number_suffixes: u8, // number of suffixes in the block
 }
 
 impl<V> InfoLongMatch<V>
@@ -40,29 +50,36 @@ where
     #[inline]
     pub fn compute_answer(
         &self,
+        key: u64,
         text: u64,
         text_len: usize,
         suffixes: &[u64],
         lengths: &[u64],
         masks: &[u64],
     ) -> Option<(V, usize)> {
-        // println!("suffix: {:064b} len: {}", text, text_len);
-        for i in 0..=1 {
-            // println!(
-            //     "match{i}: {:064b} len: {}",
-            //     self.first_suffixes[i], self.first_suffixes_len[i]
-            // );
-
-            if is_prefix(
-                text,
-                self.first_suffixes[i],
-                text_len,
-                self.first_suffixes_len[i] as usize,
-            ) {
-                return Some((self.base_id, 8 + self.first_suffixes_len[i] as usize));
-                // FIXME: it is base_id -1 or -2!
-            };
+        if key != self.key {
+            return None;
         }
+
+        // return Some((self.answer_id, self.answer_length as usize));
+
+        // println!("suffix: {:064b} len: {}", text, text_len);
+        // for i in 0..=1 {
+        // println!(
+        //     "match{i}: {:064b} len: {}",
+        //     self.first_suffixes[i], self.first_suffixes_len[i]
+        // );
+
+        if is_prefix(
+            text,
+            self.first_suffixes,
+            text_len,
+            self.first_suffixes_len as usize,
+        ) {
+            return Some((self.base_id, 8 + self.first_suffixes_len as usize));
+            // FIXME: it is base_id -1 or -2!
+        };
+        // }
 
         let mut start = self.offset as usize;
         let end = start + self.number_suffixes as usize;
@@ -81,7 +98,7 @@ where
             }
         }
 
-        // println!("numbers {}", numbers);
+        // // println!("numbers {}", numbers);
         // while numbers > 0 {
         //     let pos = is_prefix_16_avx(start, suffixes, lengths, masks, text, text_len as u8);
 
@@ -104,7 +121,8 @@ where
     V: Copy + Default + Into<usize>,
 {
     dictionary: FxHashMap<(u64, u8), V>,
-    long_dictionary: FxHashMap<u64, InfoLongMatch<V>>,
+    long_dictionary: PH<u64, Linear>,
+    long_info: Vec<InfoLongMatch<V>>,
     buckets_suffix: Vec<u64>,
     buckets_length: Vec<u64>,
     masks: Vec<u64>, // start, num, id, length
@@ -302,14 +320,17 @@ where
             let prefix = bytes_to_u64_le(&data, 8);
             let suffix = bytes_to_u64_le(&data[8..], suffix_len);
 
-            if let Some(&info_long_match) = self.long_dictionary.get(&prefix) {
-                return info_long_match.compute_answer(
-                    suffix,
-                    suffix_len,
-                    &self.buckets_suffix,
-                    &self.buckets_length,
-                    &self.masks,
-                );
+            let index = self.long_dictionary.index(&prefix);
+
+            if let Some(answer) = self.long_info[index].compute_answer(
+                prefix,
+                suffix,
+                suffix_len,
+                &self.buckets_suffix,
+                &self.buckets_length,
+                &self.masks,
+            ) {
+                return Some(answer);
             }
         }
 
@@ -322,7 +343,7 @@ where
             }
         }
 
-        None
+        Some((V::default(), 0))
     }
 }
 
@@ -337,11 +358,12 @@ where
         let mut masks = Vec::new();
 
         let p = InfoLongMatch {
+            key: 0,
             answer_id: V::default(),
             answer_length: 0,
             base_id: V::default(),
-            first_suffixes: [0, 0],
-            first_suffixes_len: [0, 0],
+            first_suffixes: 0,     //[0, 0],
+            first_suffixes_len: 0, // [0, 0],
             offset: 0,
             number_suffixes: 0,
         };
@@ -351,22 +373,22 @@ where
             let (answer_id, answer_length) = lpm.find_longest_match(&prefix.to_le_bytes()).unwrap();
             let first_suffix = bucket[0].0 .0;
             let first_suffix_len = bucket[0].0 .1;
-            let second_suffix = if bucket.len() > 1 {
-                bucket[1].0 .0
-            } else {
-                first_suffix
-            };
-            let second_suffix_len = if bucket.len() > 1 {
-                bucket[1].0 .1
-            } else {
-                first_suffix_len
-            };
+            // let second_suffix = if bucket.len() > 1 {
+            //     bucket[1].0 .0
+            // } else {
+            //     first_suffix
+            // };
+            // let second_suffix_len = if bucket.len() > 1 {
+            //     bucket[1].0 .1
+            // } else {
+            //     first_suffix_len
+            // };
 
             assert!(buckets_suffix.len() < 1 << 16);
             let offset = buckets_suffix.len() as u16;
             let mut number_suffixes = 0;
 
-            for &((suffix, suffix_len), _id) in bucket.iter().skip(2) {
+            for &((suffix, suffix_len), _id) in bucket.iter().skip(1) {
                 buckets_suffix.push(suffix);
                 buckets_length.push(suffix_len as u64);
                 masks.push(MASKS[suffix_len as usize]);
@@ -374,11 +396,12 @@ where
             }
 
             let info_long_match = InfoLongMatch {
+                key: prefix,
                 answer_id,
                 answer_length: answer_length as u8,
-                base_id: V::default(), // FIXME
-                first_suffixes: [first_suffix, second_suffix],
-                first_suffixes_len: [first_suffix_len, second_suffix_len],
+                base_id: V::default(),                // FIXME
+                first_suffixes: first_suffix,         //[first_suffix, second_suffix],
+                first_suffixes_len: first_suffix_len, //[first_suffix_len, second_suffix_len],
                 offset,
                 number_suffixes,
             };
@@ -403,11 +426,12 @@ where
                 }
 
                 let info_long_match = InfoLongMatch {
+                    key,
                     answer_id: id,
                     answer_length: 8 as u8,
                     base_id: V::default(), // FIXME
-                    first_suffixes: [0, 0],
-                    first_suffixes_len: [0, 0],
+                    first_suffixes: 0,     //[0, 0],
+                    first_suffixes_len: 0, //[0, 0],
                     offset: 0,
                     number_suffixes: 0,
                 };
@@ -419,9 +443,55 @@ where
             dictionary.insert((key, length), id);
         }
 
+        let keys = long_dictionary.keys().copied().collect::<Vec<_>>();
+        println!(
+            "N keys {} long dict len {}",
+            keys.len(),
+            long_dictionary.len()
+        );
+
+        let mphf = //<PtrHash>::new(&keys, PtrHashParams::default());
+        PH::<_, Linear>::new(
+            &keys,
+            PtrHashParams {
+                c: 3.0,
+                alpha: 0.98,
+                print_stats: true,
+                slots_per_part: 1 << 12,
+                keys_per_shard: 1 << 33,
+                sharding: Sharding::None,
+                ..Default::default()
+            },
+        );
+
+        let mut taken = vec![false; 2 * keys.len()];
+        let mut max = 0;
+        for key in &keys {
+            let idx = mphf.index(key);
+            if idx > max {
+                max = idx;
+            }
+            assert_eq!(taken[idx as usize], false);
+            taken[idx as usize] = true;
+        }
+
+        println!(
+            "Max: {} long dictionary size: {}",
+            max,
+            long_dictionary.len()
+        );
+
+        let mut long_info = vec![InfoLongMatch::default(); max as usize + 1];
+        for (key, &p) in long_dictionary.iter() {
+            let index = mphf.index(key) as usize;
+
+            long_info[index] = p;
+        }
+
         Self {
             dictionary,
-            long_dictionary,
+            long_dictionary: mphf,
+            long_info,
             buckets_suffix,
             buckets_length,
             masks,
