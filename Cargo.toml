@@ -22,3 +22,5 @@ brotli = "3.3.0"
 prettytable = "0.10"
 rustc-hash = "2.0.0"
 rand = "0.8.5"
+ptr_hash  = { git = "https://github.com/RagnarGrootKoerkamp/ptrhash" }
+cacheline-ef = { git = "https://github.com/RagnarGrootKoerkamp/cacheline-ef" }
