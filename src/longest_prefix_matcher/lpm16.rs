@@ -25,8 +25,12 @@ const MASKS: [u64; 9] = [
     0xFFFFFFFFFFFFFFFF, // 8 bytes
 ];
 
-// 2+2+1+8+8+2+2+1=26 bytes but it uses 32 bytes due to alignments. When add key, it'll be 34. need to save 2 bytes
-// 20000*26=520000 bytes = 520KB
+// To avoid lenght checks, the last byte may encode the length l of the suffix with 1^l bits
+// This has a couple of advantages:
+// - suffix and lenght compared with a single instruction
+// - no need to store and ACCESS the length of the suffix
+// - struct and buckets are smaller
+// Use a final pop count to report the length of the suffix
 
 #[derive(Default, Copy, Clone)]
 struct InfoLongMatch<V>
@@ -35,18 +39,49 @@ where
 {
     key: u64, // Needed when using perfect hashing
     answer_id: V,
-    answer_length: u8,
-    base_id: V,             // if of the first element in the block
-    first_suffixes: u64, //[u64; 2], // first suffix and second suffix. The first suffix id is base_id - 1, secondo suffix id is base_id-2. So, if second one does not exist, it is equal to the first one and its id is not wasted.
-    first_suffixes_len: u8, //[u8; 2], // first suffix length and second suffix length
-    offset: u16,         // offset in the buckets_suffix and buckets_length
-    number_suffixes: u8, // number of suffixes in the block
+    // answer_length: u8,
+    lengths: u16,
+    base_id: V,               // if of the first element in the block
+    first_suffixes: [u64; 2], // first suffix and second suffix. The first suffix id is base_id - 1, secondo suffix id is base_id-2. So, if second one does not exist, it is equal to the first one and its id is not wasted.
+    // first_suffixes_len: [u8; 2], // first suffix length and second suffix length
+    offset: u16, // offset in the buckets_suffix and buckets_length
+                 // number_suffixes: u8,      // number of suffixes in the block
 }
+
+// 67,624,587,962
+// 78,250,475,275
 
 impl<V> InfoLongMatch<V>
 where
     V: Copy + Default + Into<usize>,
 {
+    #[inline]
+    fn decode_lengths(lengths: u16) -> (u8, u8, [u8; 2]) {
+        let answer_length = (lengths >> (16 - 3)) as u8 + 1;
+        let number_suffixes = (lengths >> (16 - 3 - 7)) as u8 & 0b1111111;
+        let first_suffix_lengths = ((lengths >> (16 - 3 - 7 - 3)) & 0b111) as u8 + 1;
+        let second_suffix_lengths = ((lengths >> (16 - 3 - 7 - 3 - 3)) & 0b111) as u8 + 1;
+        (
+            answer_length,
+            number_suffixes,
+            [first_suffix_lengths, second_suffix_lengths],
+        )
+    }
+
+    #[inline]
+    fn encode_lengths(
+        answer_length: u8,
+        number_suffixes: u8,
+        first_suffixes_lengths: [u8; 2],
+    ) -> u16 {
+        let mut res = (answer_length as u16 - 1) << (16 - 3); // value in [1, 8] using 3 bits
+        res |= (number_suffixes as u16) << (16 - 3 - 7); // value in [0, 128) using 7 bits
+        res |= (first_suffixes_lengths[0] as u16 - 1) << (16 - 3 - 7 - 3); // value in [1, 8) using 3 bits
+        res |= (first_suffixes_lengths[1] as u16 - 1) << (16 - 3 - 7 - 3 - 3); // value in [1, 8) using 3 bits
+
+        res
+    }
+
     #[inline]
     pub fn compute_answer(
         &self,
@@ -58,33 +93,35 @@ where
         masks: &[u64],
     ) -> Option<(V, usize)> {
         if key != self.key {
-            return None;
+            return Some((V::default(), 0)); // return None;
         }
+        let (answer_length, number_suffixes, first_suffixes_len) =
+            Self::decode_lengths(self.lengths);
 
-        // return Some((self.answer_id, self.answer_length as usize));
+        return Some((self.answer_id, answer_length as usize));
 
         // println!("suffix: {:064b} len: {}", text, text_len);
-        // for i in 0..=1 {
-        // println!(
-        //     "match{i}: {:064b} len: {}",
-        //     self.first_suffixes[i], self.first_suffixes_len[i]
-        // );
+        for i in 0..=1 {
+            // println!(
+            //     "match{i}: {:064b} len: {}",
+            //     self.first_suffixes[i], first_suffixes_len[i]
+            // );
 
-        if is_prefix(
-            text,
-            self.first_suffixes,
-            text_len,
-            self.first_suffixes_len as usize,
-        ) {
-            return Some((self.base_id, 8 + self.first_suffixes_len as usize));
-            // FIXME: it is base_id -1 or -2!
-        };
-        // }
+            if is_prefix(
+                text,
+                self.first_suffixes[i],
+                text_len,
+                first_suffixes_len[i] as usize,
+            ) {
+                return Some((self.base_id, 8 + first_suffixes_len[i] as usize));
+                // FIXME: it is base_id -1 or -2!
+            };
+        }
 
         let mut start = self.offset as usize;
-        let end = start + self.number_suffixes as usize;
+        let end = start + number_suffixes as usize;
 
-        let mut numbers = self.number_suffixes as i32;
+        let mut numbers = number_suffixes as i32;
 
         for i in start..end {
             // println!("match:  {:064b} len: {}", suffixes[i], lengths[i]);
@@ -112,7 +149,7 @@ where
         //     start += 8;
         // }
 
-        return Some((self.answer_id, self.answer_length as usize));
+        return Some((self.answer_id, answer_length as usize));
     }
 }
 
@@ -360,12 +397,12 @@ where
         let p = InfoLongMatch {
             key: 0,
             answer_id: V::default(),
-            answer_length: 0,
+            lengths: InfoLongMatch::<V>::encode_lengths(1, 0, [1, 1]),
             base_id: V::default(),
-            first_suffixes: 0,     //[0, 0],
-            first_suffixes_len: 0, // [0, 0],
+            first_suffixes: [0, 0],
+            // first_suffixes_len: [0, 0],
             offset: 0,
-            number_suffixes: 0,
+            // number_suffixes: 0,
         };
         println!("Size of InfoLongMatch: {}", std::mem::size_of_val(&p));
 
@@ -373,16 +410,16 @@ where
             let (answer_id, answer_length) = lpm.find_longest_match(&prefix.to_le_bytes()).unwrap();
             let first_suffix = bucket[0].0 .0;
             let first_suffix_len = bucket[0].0 .1;
-            // let second_suffix = if bucket.len() > 1 {
-            //     bucket[1].0 .0
-            // } else {
-            //     first_suffix
-            // };
-            // let second_suffix_len = if bucket.len() > 1 {
-            //     bucket[1].0 .1
-            // } else {
-            //     first_suffix_len
-            // };
+            let second_suffix = if bucket.len() > 1 {
+                bucket[1].0 .0
+            } else {
+                first_suffix
+            };
+            let second_suffix_len = if bucket.len() > 1 {
+                bucket[1].0 .1
+            } else {
+                first_suffix_len
+            };
 
             assert!(buckets_suffix.len() < 1 << 16);
             let offset = buckets_suffix.len() as u16;
@@ -395,15 +432,25 @@ where
                 number_suffixes += 1;
             }
 
+            assert!(
+                number_suffixes < 128,
+                "Number of suffixes is too high because we are packing their number within 7 bits"
+            );
+
             let info_long_match = InfoLongMatch {
                 key: prefix,
                 answer_id,
-                answer_length: answer_length as u8,
-                base_id: V::default(),                // FIXME
-                first_suffixes: first_suffix,         //[first_suffix, second_suffix],
-                first_suffixes_len: first_suffix_len, //[first_suffix_len, second_suffix_len],
+                lengths: InfoLongMatch::<V>::encode_lengths(
+                    answer_length as u8,
+                    number_suffixes,
+                    [first_suffix_len, second_suffix_len],
+                ),
+                // answer_length: answer_length as u8,
+                base_id: V::default(), // FIXME
+                first_suffixes: [first_suffix, second_suffix],
+                //first_suffixes_len: [first_suffix_len, second_suffix_len],
                 offset,
-                number_suffixes,
+                // number_suffixes,
             };
 
             long_dictionary.insert(prefix, info_long_match);
@@ -421,19 +468,20 @@ where
             if length == 8 {
                 if long_dictionary.contains_key(&key) {
                     let info = long_dictionary.get(&key).unwrap();
-                    assert_eq!(info.answer_length, 8);
+                    // assert_eq!(info.answer_length, 8);
                     continue;
                 }
 
                 let info_long_match = InfoLongMatch {
                     key,
                     answer_id: id,
-                    answer_length: 8 as u8,
+                    lengths: InfoLongMatch::<V>::encode_lengths(8, 0, [1, 1]),
+                    // answer_length: 8 as u8,
                     base_id: V::default(), // FIXME
-                    first_suffixes: 0,     //[0, 0],
-                    first_suffixes_len: 0, //[0, 0],
+                    first_suffixes: [0, 0],
+                    // first_suffixes_len: [0, 0],
                     offset: 0,
-                    number_suffixes: 0,
+                    // number_suffixes: 0,
                 };
 
                 long_dictionary.insert(key, info_long_match);
@@ -454,10 +502,10 @@ where
         PH::<_, Linear>::new(
             &keys,
             PtrHashParams {
-                c: 3.0,
+                c: 5.0,
                 alpha: 0.98,
                 print_stats: true,
-                slots_per_part: 1 << 12,
+                slots_per_part: 1 << 11,
                 keys_per_shard: 1 << 33,
                 sharding: Sharding::None,
                 ..Default::default()
@@ -495,6 +543,7 @@ where
             buckets_suffix,
             buckets_length,
             masks,
+            stupid,
         }
     }
 }

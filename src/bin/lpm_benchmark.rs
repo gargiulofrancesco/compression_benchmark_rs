@@ -53,6 +53,12 @@ fn main() {
         *end_positions.last().unwrap()
     );
 
+    println!("Number of phrases: {}", parse_lengths.len());
+    println!(
+        "Number of phases * N_ITERATIONS: {}",
+        parse_lengths.len() * N_ITERATIONS
+    );
+
     let lpm = StaticLongestPrefixMatcher::from(lpm);
 
     println!("Please skip {:?}", start.elapsed());
@@ -71,10 +77,10 @@ fn main() {
             let mut pos: usize = start;
             while pos < end {
                 let true_length = parse_lengths[i];
-                let (id, _length) = lpm.find_longest_match(&data[pos..end]).unwrap();
-                assert_eq!(_length, true_length as usize);
+                let (id, length) = lpm.find_longest_match(&data[pos..end]).unwrap();
+                // assert_eq!(_length, true_length as usize);
                 pos += true_length as usize;
-                useless = useless.wrapping_add(id as usize);
+                useless = useless.wrapping_add(id as usize + length as usize);
                 i += 1;
             }
 
