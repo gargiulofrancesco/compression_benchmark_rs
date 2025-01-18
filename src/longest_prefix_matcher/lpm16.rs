@@ -93,12 +93,11 @@ where
         masks: &[u64],
     ) -> Option<(V, usize)> {
         if key != self.key {
-            return Some((V::default(), 0)); // return None;
+            return Some((V::default(), 0)); // return None; // FIXME. !NONE only for profiling purposes
         }
         let (answer_length, number_suffixes, first_suffixes_len) =
             Self::decode_lengths(self.lengths);
-
-        return Some((self.answer_id, answer_length as usize));
+        // return Some((self.answer_id, answer_length as usize));
 
         // println!("suffix: {:064b} len: {}", text, text_len);
         for i in 0..=1 {
@@ -543,7 +542,6 @@ where
             buckets_suffix,
             buckets_length,
             masks,
-            stupid,
         }
     }
 }
