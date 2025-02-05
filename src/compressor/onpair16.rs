@@ -1,4 +1,7 @@
+use std::time::Instant;
+
 use crate::longest_prefix_matcher::lpm16::LongestPrefixMatcher;
+use crate::longest_prefix_matcher::lpm16::StaticLongestPrefixMatcher;
 use super::Compressor;
 use rustc_hash::FxHashMap;
 
@@ -24,7 +27,8 @@ impl Compressor for OnPair16Compressor {
 
     fn compress(&mut self, data: &[u8], end_positions: &[usize]) {
         let lpm = self.train(data, end_positions);
-        self.parse(data, end_positions, &lpm);
+        let lpm_static = lpm.finalize();
+        self.parse(data, end_positions, &lpm_static);
     }
 
     fn decompress(&self, buffer: &mut [u8]) -> usize {
@@ -148,7 +152,7 @@ impl OnPair16Compressor {
         lpm
     }
     
-    fn parse(&mut self, data: &[u8], end_positions: &[usize], lpm: &LongestPrefixMatcher<u16>) {
+    fn parse(&mut self, data: &[u8], end_positions: &[usize], lpm: &StaticLongestPrefixMatcher<u16>) {
         self.item_end_positions.push(0);
     
         let mut start = 0;
