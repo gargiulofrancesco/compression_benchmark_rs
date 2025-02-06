@@ -1,5 +1,3 @@
-use std::time::Instant;
-
 use crate::longest_prefix_matcher::lpm16::LongestPrefixMatcher;
 use crate::longest_prefix_matcher::lpm16::StaticLongestPrefixMatcher;
 use super::Compressor;
@@ -132,12 +130,14 @@ impl OnPair16Compressor {
 
                     if frequency[&(previous_token_id, match_token_id)] > THRESHOLD {
                         let merged_token = &data[pos - previous_length..pos + match_length];
-                        lpm.insert(merged_token, next_token_id);
-                        self.dictionary.extend(merged_token);
-                        self.dictionary_end_positions.push(self.dictionary.len() as u32);
-
-                        next_token_id += 1;
-                        frequency.remove(&(previous_token_id, match_token_id));
+                        let added_flag = lpm.insert(merged_token, next_token_id);
+                        if added_flag {
+                            self.dictionary.extend(merged_token);
+                            self.dictionary_end_positions.push(self.dictionary.len() as u32);
+    
+                            next_token_id += 1;
+                            frequency.remove(&(previous_token_id, match_token_id));
+                        }
                     }
                 }
     

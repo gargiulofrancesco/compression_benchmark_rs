@@ -7,6 +7,7 @@ use ptr_hash::*;
 type PH<Key, BF> = PtrHash<Key, BF, CachelineEfVec, hash::FxHash, Vec<u8>>;
 
 const N_INLINE_SUFFIXES: usize = 3;
+const MAX_BUCKET_SIZE: usize = 32;
 
 const MASKS: [u64; 9] = [
     0x0000000000000000, // 0 bytes
@@ -38,20 +39,28 @@ where
     }
 
     #[inline]
-    pub fn insert(&mut self, data: &[u8], id: V) {
+    pub fn insert(&mut self, data: &[u8], id: V) -> bool {
         let length = data.len();
 
         if length <= 8 {
             let value = bytes_to_u64_le(data, length);
             self.dictionary.insert((value, length as u8), id);
+            return true;
         }
         else {
             let prefix = bytes_to_u64_le(data, 8);
+            let bucket = self.buckets.entry(prefix).or_default();
+
+            if bucket.len() > MAX_BUCKET_SIZE {
+                return false;
+            }
+
             let suffix_len = length - 8;
             let suffix = bytes_to_u64_le(&data[8..], suffix_len);
-            let bucket = self.buckets.entry(prefix).or_default();
+            
             bucket.push((suffix, suffix_len as u8, id));
             bucket.sort_unstable_by(|&a, &b| b.1.cmp(&a.1));
+            return true;
         }
     }
 
@@ -220,11 +229,12 @@ where
     #[inline]
     pub fn compute_long_answer(&self, prefix: u64, suffix: u64, suffix_len: usize) -> Option<(V, usize)> {
         let index = self.long_dictionary.index(&prefix);
-        let long_info = &self.long_info[index];
 
-        if prefix != long_info.prefix {
+        if index >= self.long_info.len() || prefix != self.long_info[index].prefix {
             return None;
         }
+
+        let long_info = &self.long_info[index];
 
         for i in 0..N_INLINE_SUFFIXES.min(long_info.n_suffixes as usize) {
             let inline_suffix = &long_info.inline_suffixes[i as usize];
