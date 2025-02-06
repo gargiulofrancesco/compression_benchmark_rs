@@ -6,8 +6,8 @@ use ptr_hash::{PtrHash, PtrHashParams};
 use ptr_hash::*;
 type PH<Key, BF> = PtrHash<Key, BF, CachelineEfVec, hash::FxHash, Vec<u8>>;
 
-const N_INLINE_SUFFIXES: usize = 3;
-const MAX_BUCKET_SIZE: usize = 32;
+const N_INLINE_SUFFIXES: usize = 4;
+const MAX_BUCKET_SIZE: usize = 128;
 
 const MASKS: [u64; 9] = [
     0x0000000000000000, // 0 bytes
@@ -101,13 +101,15 @@ where
             let (answer_id, answer_length) = self.find_longest_match(&prefix.to_le_bytes()).unwrap();
             let offset = buckets.len() as u16;
             let mut n_suffixes: u16 = 0;
-            let mut inline_suffixes: [(u64, u8, V); N_INLINE_SUFFIXES] = [(0, 0, V::default()); N_INLINE_SUFFIXES];
             
+            let mut inline_suffixes: [u64; N_INLINE_SUFFIXES] = [0; N_INLINE_SUFFIXES];
+            let mut inline_lengths: [u8; N_INLINE_SUFFIXES] = [0; N_INLINE_SUFFIXES];
+            let mut inline_ids: [V; N_INLINE_SUFFIXES] = [V::default(); N_INLINE_SUFFIXES];
+
             for i in 0..N_INLINE_SUFFIXES.min(bucket.len()) {
-                let suffix = bucket[i].0;
-                let len = bucket[i].1;
-                let id = bucket[i].2;
-                inline_suffixes[i] = (suffix, len, id);
+                inline_suffixes[i] = bucket[i].0;
+                inline_lengths[i] = bucket[i].1;
+                inline_ids[i] = bucket[i].2;
                 n_suffixes += 1;
             }
 
@@ -122,6 +124,8 @@ where
                 answer_length: answer_length as u8,
                 n_suffixes,
                 inline_suffixes,
+                inline_lengths,
+                inline_ids,
                 offset,
             };
 
@@ -140,7 +144,9 @@ where
                     answer_id: id,
                     answer_length: length,
                     n_suffixes: 0,
-                    inline_suffixes: [(0, 0, V::default()); N_INLINE_SUFFIXES],
+                    inline_suffixes: [0; N_INLINE_SUFFIXES],
+                    inline_lengths: [0; N_INLINE_SUFFIXES],
+                    inline_ids: [V::default(); N_INLINE_SUFFIXES],
                     offset: 0,
                 };
 
@@ -179,9 +185,11 @@ where
     V: Copy + Default + Into<usize>,
 {
     pub prefix: u64,
-    pub inline_suffixes: [(u64, u8, V); N_INLINE_SUFFIXES],
+    pub inline_suffixes: [u64; N_INLINE_SUFFIXES],
+    pub inline_lengths: [u8; N_INLINE_SUFFIXES],
+    pub inline_ids: [V; N_INLINE_SUFFIXES],
     pub n_suffixes: u16,
-    pub offset: u16, 
+    pub offset: u16,
     pub answer_id: V,
     pub answer_length: u8,
 }
@@ -237,9 +245,11 @@ where
         let long_info = &self.long_info[index];
 
         for i in 0..N_INLINE_SUFFIXES.min(long_info.n_suffixes as usize) {
-            let inline_suffix = &long_info.inline_suffixes[i as usize];
-            if is_prefix(suffix, inline_suffix.0, suffix_len, inline_suffix.1 as usize) {
-                return Some((inline_suffix.2, 8 + inline_suffix.1 as usize));
+            let inline_suffix = long_info.inline_suffixes[i as usize];
+            let inline_id = long_info.inline_ids[i as usize];
+            let inline_len = long_info.inline_lengths[i as usize] as usize;
+            if is_prefix(suffix, inline_suffix, suffix_len, inline_len) {
+                return Some((inline_id, 8 + inline_len));
             }
         }
 
