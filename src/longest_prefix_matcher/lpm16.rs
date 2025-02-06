@@ -95,11 +95,11 @@ where
 
     pub fn finalize(&self) -> StaticLongestPrefixMatcher<V> {
         let mut long_dictionary = FxHashMap::default();
-        let mut buckets = Vec::new();
-
+        let mut long_buckets = Vec::new();
+        
         for (&prefix, bucket) in self.buckets.iter() {
             let (answer_id, answer_length) = self.find_longest_match(&prefix.to_le_bytes()).unwrap();
-            let offset = buckets.len() as u16;
+            let offset = long_buckets.len() as u16;
             let mut n_suffixes: u16 = 0;
             
             let mut inline_suffixes: [u64; N_INLINE_SUFFIXES] = [0; N_INLINE_SUFFIXES];
@@ -114,11 +114,11 @@ where
             }
 
             for &(suffix, len, id) in bucket.iter().skip(N_INLINE_SUFFIXES) {
-                buckets.push((suffix, len, id));
+                long_buckets.push((suffix, len, id));
                 n_suffixes += 1;
             }
  
-            let info_long_match = InfoLongMatch {
+            let info_long_match = LongMatchInfo {
                 prefix,
                 answer_id,
                 answer_length: answer_length as u8,
@@ -133,13 +133,14 @@ where
         }
 
         let mut short_dictionary = FxHashMap::default();
+        
         for (&(prefix, length), &id) in self.dictionary.iter() {
             if length == 8 {
                 if long_dictionary.contains_key(&prefix) {
                     continue;
                 }
 
-                let info_long_match = InfoLongMatch {
+                let info_long_match = LongMatchInfo {
                     prefix,
                     answer_id: id,
                     answer_length: length,
@@ -154,33 +155,34 @@ where
 
                 continue;
             }
+
             short_dictionary.insert((prefix, length), id);
         }
 
         let prefixes = long_dictionary.keys().copied().collect::<Vec<_>>();
-        let mphf = PH::<_, Linear>::new(&prefixes, PtrHashParams::default());
+        let long_phf = PH::<_, Linear>::new(&prefixes, PtrHashParams::default());
         let max = prefixes.iter()
-            .map(|prefix| mphf.index(prefix))
+            .map(|prefix| long_phf.index(prefix))
             .fold(0, |acc, idx| acc.max(idx));
 
-        let mut long_info = vec![InfoLongMatch::default(); max as usize + 1];
+        let mut long_info = vec![LongMatchInfo::default(); max as usize + 1];
         for (prefix, &p) in long_dictionary.iter() {
-            let index = mphf.index(prefix) as usize;
+            let index = long_phf.index(prefix) as usize;
             long_info[index] = p;
         }
 
         StaticLongestPrefixMatcher {
             short_dictionary,
-            long_dictionary: mphf,
+            long_phf,
             long_info,
-            buckets,
+            long_buckets,
         }
     }
 }
 
 #[repr(align(64))] // Ensure 64-byte alignment
 #[derive(Default, Copy, Clone)]
-struct InfoLongMatch<V>
+struct LongMatchInfo<V>
 where
     V: Copy + Default + Into<usize>,
 {
@@ -199,9 +201,9 @@ where
     V: Copy + Default + Into<usize>,
 {
     short_dictionary: FxHashMap<(u64, u8), V>,
-    long_dictionary: PH<u64, Linear>,
-    long_info: Vec<InfoLongMatch<V>>,
-    buckets: Vec<(u64, u8, V)>,
+    long_phf: PH<u64, Linear>,
+    long_info: Vec<LongMatchInfo<V>>,
+    long_buckets: Vec<(u64, u8, V)>,
 }
 
 impl<V> StaticLongestPrefixMatcher<V>
@@ -236,7 +238,7 @@ where
 
     #[inline]
     pub fn compute_long_answer(&self, prefix: u64, suffix: u64, suffix_len: usize) -> Option<(V, usize)> {
-        let index = self.long_dictionary.index(&prefix);
+        let index = self.long_phf.index(&prefix);
 
         if index >= self.long_info.len() || prefix != self.long_info[index].prefix {
             return None;
@@ -258,7 +260,7 @@ where
             let end = start + long_info.n_suffixes as usize - N_INLINE_SUFFIXES;
 
             for i in start..end {
-                let item = &self.buckets[i];
+                let item = &self.long_buckets[i];
                 if is_prefix(suffix, item.0, suffix_len, item.1 as usize) {
                     return Some((item.2, 8 + item.1 as usize));
                 }
