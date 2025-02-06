@@ -1,5 +1,3 @@
-use std::time::Instant;
-
 use crate::longest_prefix_matcher::lpm16::LongestPrefixMatcher;
 use crate::longest_prefix_matcher::lpm16::StaticLongestPrefixMatcher;
 use super::Compressor;
@@ -27,7 +25,22 @@ impl Compressor for OnPair16Compressor {
 
     fn compress(&mut self, data: &[u8], end_positions: &[usize]) {
         let lpm = self.train(data, end_positions);
-        let lpm_static = lpm.finalize();
+        let (lpm_static, remap_ids) = lpm.finalize();
+
+        // Remapping dictionary entries
+        let mut new_dictionary: Vec<u8> = Vec::with_capacity(self.dictionary.len());
+        let mut new_dictionary_end_positions: Vec<u32> = Vec::with_capacity(self.dictionary_end_positions.len());
+        new_dictionary_end_positions.push(0);
+        for i in 0..self.dictionary_end_positions.len()-1 {
+            let old_id = remap_ids[i];
+            let start = self.dictionary_end_positions[old_id as usize] as usize;
+            let end = self.dictionary_end_positions[old_id as usize + 1] as usize;
+            new_dictionary.extend_from_slice(&self.dictionary[start..end]);
+            new_dictionary_end_positions.push(new_dictionary.len() as u32);
+        }
+        self.dictionary = new_dictionary;
+        self.dictionary_end_positions = new_dictionary_end_positions;
+
         self.parse(data, end_positions, &lpm_static);
     }
 
@@ -89,7 +102,7 @@ impl Compressor for OnPair16Compressor {
 }
 
 impl OnPair16Compressor {
-    fn train(&mut self, data: &[u8], end_positions: &[usize]) -> LongestPrefixMatcher<u16> {
+    fn train(&mut self, data: &[u8], end_positions: &[usize]) -> LongestPrefixMatcher {
         self.dictionary_end_positions.push(0);
 
         let mut frequency: FxHashMap<(u16, u16), usize> = FxHashMap::default();
@@ -132,12 +145,14 @@ impl OnPair16Compressor {
 
                     if frequency[&(previous_token_id, match_token_id)] > THRESHOLD {
                         let merged_token = &data[pos - previous_length..pos + match_length];
-                        lpm.insert(merged_token, next_token_id);
-                        self.dictionary.extend(merged_token);
-                        self.dictionary_end_positions.push(self.dictionary.len() as u32);
-
-                        next_token_id += 1;
-                        frequency.remove(&(previous_token_id, match_token_id));
+                        let added_flag = lpm.insert(merged_token, next_token_id);
+                        if added_flag {
+                            self.dictionary.extend(merged_token);
+                            self.dictionary_end_positions.push(self.dictionary.len() as u32);
+    
+                            next_token_id += 1;
+                            frequency.remove(&(previous_token_id, match_token_id));
+                        }
                     }
                 }
     
@@ -152,7 +167,7 @@ impl OnPair16Compressor {
         lpm
     }
     
-    fn parse(&mut self, data: &[u8], end_positions: &[usize], lpm: &StaticLongestPrefixMatcher<u16>) {
+    fn parse(&mut self, data: &[u8], end_positions: &[usize], lpm: &StaticLongestPrefixMatcher) {
         self.item_end_positions.push(0);
     
         let mut start = 0;
