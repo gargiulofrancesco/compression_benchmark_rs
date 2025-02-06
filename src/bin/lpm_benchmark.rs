@@ -4,7 +4,7 @@ use std::fs::{self, File};
 
 const N_ITERATIONS: usize = 10;
 
-fn deserialize(dataset_name: &str) -> (Vec<u8>, Vec<usize>, Vec<u8>, LongestPrefixMatcher<u16>) {
+fn deserialize(dataset_name: &str) -> (Vec<u8>, Vec<usize>, Vec<u8>, LongestPrefixMatcher) {
     let base_path = "/home/gargiulo/data/lpm_bench/";
     let dataset_folder = format!("{}/{}", base_path, dataset_name);
 
