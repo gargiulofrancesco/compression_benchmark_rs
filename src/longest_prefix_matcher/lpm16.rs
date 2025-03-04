@@ -178,7 +178,7 @@ impl LongestPrefixMatcher {
         }
 
         let prefixes = long_dictionary.keys().copied().collect::<Vec<_>>();
-        let mphf = PH::<_, Linear>::new(&prefixes, PtrHashParams::default());
+        let mphf = PH::<_, Linear>::new(&prefixes, PtrHashParams::default_fast());
         let max = prefixes.iter()
             .map(|prefix| mphf.index(prefix))
             .fold(0, |acc, idx| acc.max(idx));
