@@ -160,7 +160,7 @@ where
         }
 
         let prefixes = long_dictionary.keys().copied().collect::<Vec<_>>();
-        let long_phf = PH::<_, Linear>::new(&prefixes, PtrHashParams::default());
+        let long_phf = PH::<_, Linear>::new(&prefixes, PtrHashParams::default_fast());
         let max = prefixes.iter()
             .map(|prefix| long_phf.index(prefix))
             .fold(0, |acc, idx| acc.max(idx));
