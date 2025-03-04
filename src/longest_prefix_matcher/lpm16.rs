@@ -148,14 +148,7 @@ impl LongestPrefixMatcher {
         }
 
         // Entries of length [1, 3]: explicitly store answers
-        let mut short_answer: Vec<(u16, u8)> = vec![(0, 0); 1 << 24];
-        for prefix in 0u64..(1 << 24) {
-            let prefix_len = ((64 - prefix.leading_zeros() + 7) / 8).max(1) as usize;
-            let prefix_slice = &prefix.to_le_bytes()[0..prefix_len];
-            if let Some((id, len)) = self.find_longest_match(prefix_slice){
-                short_answer[prefix as usize] = (id, len as u8);
-            }
-        }
+        let mut short_answer: FxHashMap<(u32, u8), u16> = FxHashMap::default();
 
         // Entries of length [4, 8]
         let mut self_medium_dictionary: FxHashMap<u64, Vec<(u32, u8, u16)>> = FxHashMap::default();
@@ -195,6 +188,7 @@ impl LongestPrefixMatcher {
                 prefixes_len4.push(key);
             }
             else if length < 4 {
+                short_answer.insert((prefix as u32, length), current_id as u16);
                 remap_ids[current_id] = id;
                 current_id += 1;
             }
@@ -299,11 +293,6 @@ impl LongestPrefixMatcher {
             reverse_remap_ids[old_id] = new_id as u16;
         }
 
-        // Remap short dictionary
-        for (old_id, _) in short_answer.iter_mut() {
-            *old_id = reverse_remap_ids[*old_id as usize];
-        }
-
         // Remap medium dictionary
         let mut medium_info = vec![MediumMatchInfo::default(); medium_max as usize + 1];
         for (prefix, p) in medium_dictionary.iter_mut() {
@@ -334,7 +323,7 @@ impl LongestPrefixMatcher {
     }
 }
 
-#[repr(align(32))] // Ensure 32-byte alignment
+// #[repr(align(32))] // Ensure 32-byte alignment
 #[derive(Default, Copy, Clone)]
 struct LongMatchInfo {
     pub prefix: u64,
@@ -413,7 +402,7 @@ impl MediumMatchInfo {
 }
 
 pub struct StaticLongestPrefixMatcher {
-    short_answer: Vec<(u16, u8)>,
+    short_answer: FxHashMap<(u32, u8), u16>,
     long_phf: PH<u64, Linear>,
     long_info: Vec<LongMatchInfo>,
     long_buckets: Vec<(u64, u8)>,
@@ -451,9 +440,15 @@ impl StaticLongestPrefixMatcher {
 
         // Short match handling
         let len = data.len().min(3);
-        let prefix = bytes_to_u64_le(&data, len) as usize;
-        let (id, len) = self.short_answer[prefix];
-        return Some((id, len as usize));
+        let mut prefix = bytes_to_u64_le(&data, len);
+        for length in (1..=len).rev() {
+            prefix = prefix & MASKS[length];
+            if let Some(&id) = self.short_answer.get(&(prefix as u32, length as u8)) {
+                return Some((id, length));
+            }
+        }
+
+        unreachable!("A match is guaranteed to be found before this is reached.");    
     }
 
     #[inline]
