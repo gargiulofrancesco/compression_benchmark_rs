@@ -6,7 +6,7 @@ use ptr_hash::{PtrHash, PtrHashParams};
 use ptr_hash::*;
 type PH<Key, BF> = PtrHash<Key, BF, CachelineEfVec, hash::FxHash, Vec<u8>>;
 
-const MAX_BUCKET_SIZE: usize = 128;
+const MAX_BUCKET_SIZE: usize = 127;
 
 const MASKS: [u64; 9] = [
     0x0000000000000000, // 0 bytes
@@ -47,7 +47,7 @@ impl LongestPrefixMatcher {
             let prefix = bytes_to_u64_le(data, 8);
             let bucket = self.buckets.entry(prefix).or_default();
             
-            if bucket.len() > MAX_BUCKET_SIZE {
+            if bucket.len() >= MAX_BUCKET_SIZE {
                 return false;
             }
             
@@ -90,15 +90,16 @@ impl LongestPrefixMatcher {
     }
 
     pub fn finalize(&self) -> (StaticLongestPrefixMatcher, Vec<u16>) {
-        let mut long_dictionary = FxHashMap::default();
-        let mut buckets = Vec::new();
         let mut current_id = 0;
         let mut remap_ids: Vec<u16> = vec![u16::MAX; 1 << 16]; // map: new_id -> old_id
 
+        // Entries of length [9, 16]
+        let mut long_dictionary = FxHashMap::default();
+        let mut long_buckets = Vec::new();
         for (&prefix, bucket) in self.buckets.iter() {
             let (answer_id, answer_length) = self.find_longest_match(&prefix.to_le_bytes()).unwrap();
-            let offset = buckets.len() as u16;
-            let mut n_suffixes: u8 = 0;
+            let offset = long_buckets.len() as u16;
+            let n_suffixes: usize = bucket.len();
             let mut inline_suffixes: [u64; 2] = [bucket[0].0; 2];
             let mut inline_suffixes_len: [u8; 2] = [bucket[0].1; 2];
 
@@ -118,25 +119,23 @@ impl LongestPrefixMatcher {
             let base_id = current_id as u16;
 
             for &(suffix, len, id) in bucket.iter().skip(2) {
-                buckets.push((suffix, len));
-                n_suffixes += 1;
-
+                long_buckets.push((suffix, len));
                 remap_ids[current_id] = id;
                 current_id += 1;
             }
 
             assert!(
                 n_suffixes < 128,
-                "Number of suffixes is too high because we are packing their number within 7 bits"
+                "Number of suffixes is too high: {}", n_suffixes
             );
 
-            let lengths = InfoLongMatch::encode_lengths(
+            let lengths = LongMatchInfo::encode_lengths(
                 answer_length as u8,
-                n_suffixes,
+                n_suffixes as u8,
                 inline_suffixes_len,
             );
 
-            let info_long_match = InfoLongMatch {
+            let info_long_match = LongMatchInfo {
                 prefix,
                 inline_suffixes,
                 lengths,
@@ -148,19 +147,32 @@ impl LongestPrefixMatcher {
             long_dictionary.insert(prefix, info_long_match);
         }
 
-        let mut short_dictionary = FxHashMap::default();
-        for (&(prefix, length), &id) in self.dictionary.iter() {
-            remap_ids[current_id] = id;
-            current_id += 1;
+        // Entries of length [1, 3]: explicitly store answers
+        let mut short_answer: Vec<(u16, u8)> = vec![(0, 0); 1 << 24];
+        for prefix in 0u64..(1 << 24) {
+            let prefix_len = ((64 - prefix.leading_zeros() + 7) / 8).max(1) as usize;
+            let prefix_slice = &prefix.to_le_bytes()[0..prefix_len];
+            if let Some((id, len)) = self.find_longest_match(prefix_slice){
+                short_answer[prefix as usize] = (id, len as u8);
+            }
+        }
 
+        // Entries of length [4, 8]
+        let mut self_medium_dictionary: FxHashMap<u64, Vec<(u32, u8, u16)>> = FxHashMap::default();
+        let mut prefixes_len4: Vec<u64> = Vec::new();
+        for (&(prefix, length), &id) in self.dictionary.iter() {
             if length == 8 {
+                // Entries of length 8 are inserted in `long_dictionary`
+                remap_ids[current_id] = id;
+                current_id += 1;
+
                 if long_dictionary.contains_key(&prefix) {
                     continue;
                 }
 
-                let lengths = InfoLongMatch::encode_lengths(8, 0, [1, 1]);
+                let lengths = LongMatchInfo::encode_lengths(8, 0, [1, 1]);
 
-                let info_long_match = InfoLongMatch {
+                let info_long_match = LongMatchInfo {
                     prefix,
                     inline_suffixes: [0, 0],
                     lengths,
@@ -170,17 +182,115 @@ impl LongestPrefixMatcher {
                 };
 
                 long_dictionary.insert(prefix, info_long_match);
+            }
+            else if length > 4 {
+                // Entries of length [4, 7] are inserted in `self_medium_dictionary`
+                let key = prefix & MASKS[4];
+                let suffix = (prefix >> 32) as u32;
+                let suffix_len = length - 4;
+                self_medium_dictionary.entry(key).or_insert_with(Vec::new).push((suffix, suffix_len, id));       
+            }
+            else if length == 4 {
+                let key = prefix & MASKS[4];
+                prefixes_len4.push(key);
+            }
+            else if length < 4 {
+                remap_ids[current_id] = id;
+                current_id += 1;
+            }
+        }
 
+        let mut medium_dictionary = FxHashMap::default();
+        let mut medium_buckets = Vec::new();
+        for (&prefix, bucket) in self_medium_dictionary.iter_mut() {  
+            bucket.sort_unstable_by(|&a, &b| b.1.cmp(&a.1));
+
+            let (answer_id, answer_length) = self.find_longest_match(&prefix.to_le_bytes()[0..4]).unwrap();
+            let offset = medium_buckets.len() as u16;
+            let n_suffixes: usize = bucket.len();
+            let mut inline_suffixes: [u32; 2] = [bucket[0].0; 2];
+            let mut inline_suffixes_len: [u8; 2] = [bucket[0].1; 2];
+
+            if bucket.len() == 1 {
+                remap_ids[current_id] = bucket[0].2;
+                current_id += 1;
+            }
+            else {
+                inline_suffixes[1] = bucket[1].0;
+                inline_suffixes_len[1] = bucket[1].1;
+        
+                remap_ids[current_id] = bucket[1].2;
+                remap_ids[current_id + 1] = bucket[0].2;
+                current_id += 2;
+            }
+            
+            let base_id = current_id as u16;
+        
+            for &(suffix, len, id) in bucket.iter().skip(2) {
+                medium_buckets.push((suffix, len));        
+                remap_ids[current_id] = id;
+                current_id += 1;
+            }
+  
+            assert!(
+                n_suffixes < u16::MAX as usize,
+                "Number of suffixes is too high because we are packing their number within 16 bits"
+            );
+        
+            let lengths = MediumMatchInfo::encode_lengths(
+                answer_length as u8,
+                n_suffixes as u16,
+                inline_suffixes_len,
+            );
+
+            let info_medium_match = MediumMatchInfo {
+                prefix: prefix as u32,
+                inline_suffixes,
+                lengths,
+                offset,
+                base_id,
+                answer_id,
+            };
+
+            medium_dictionary.insert(prefix, info_medium_match);
+        }
+
+        for prefix in prefixes_len4 {
+            let (answer_id, answer_length) = self.find_longest_match(&prefix.to_le_bytes()[0..4]).unwrap();
+            
+            assert!(answer_length == 4);
+
+            remap_ids[current_id] = answer_id;
+            current_id += 1;
+
+            if medium_dictionary.contains_key(&prefix) {
                 continue;
             }
 
-            short_dictionary.insert((prefix, length), id);
+            let lengths = MediumMatchInfo::encode_lengths(4, 0, [1, 1]);
+
+            let info_medium_match = MediumMatchInfo {
+                prefix: prefix as u32,
+                inline_suffixes: [0, 0],
+                lengths,
+                offset: 0,
+                base_id: 0,
+                answer_id,
+            };
+
+            medium_dictionary.insert(prefix, info_medium_match);
         }
 
-        let prefixes = long_dictionary.keys().copied().collect::<Vec<_>>();
-        let mphf = PH::<_, Linear>::new(&prefixes, PtrHashParams::default());
-        let max = prefixes.iter()
-            .map(|prefix| mphf.index(prefix))
+        let medium_prefixes = medium_dictionary.keys().copied().collect::<Vec<_>>();
+        let medium_phf = PH::<_, Linear>::new(&medium_prefixes, PtrHashParams::default_fast());
+        let medium_max = medium_prefixes.iter()
+            .map(|prefix| medium_phf.index(prefix))
+            .fold(0, |acc, idx| acc.max(idx));
+
+        let long_prefixes = long_dictionary.keys().copied().collect::<Vec<_>>();
+        let long_phf = PH::<_, Linear>::new(&long_prefixes, PtrHashParams::default_fast());
+        let long_max = long_prefixes.iter()
+            .map(|prefix| long_phf.index(prefix))
             .fold(0, |acc, idx| acc.max(idx));
 
         let mut reverse_remap_ids: Vec<u16> = vec![u16::MAX; 1 << 16]; // map: old_id -> new_id
@@ -190,23 +300,34 @@ impl LongestPrefixMatcher {
         }
 
         // Remap short dictionary
-        for ((_,_), old_id) in short_dictionary.iter_mut() {
+        for (old_id, _) in short_answer.iter_mut() {
             *old_id = reverse_remap_ids[*old_id as usize];
         }
 
+        // Remap medium dictionary
+        let mut medium_info = vec![MediumMatchInfo::default(); medium_max as usize + 1];
+        for (prefix, p) in medium_dictionary.iter_mut() {
+            p.answer_id = reverse_remap_ids[p.answer_id as usize];
+            let index = medium_phf.index(prefix) as usize;
+            medium_info[index] = *p;
+        }
+
         // Remap long dictionary
-        let mut long_info = vec![InfoLongMatch::default(); max as usize + 1];
+        let mut long_info = vec![LongMatchInfo::default(); long_max as usize + 1];
         for (prefix, p) in long_dictionary.iter_mut() {
             p.answer_id = reverse_remap_ids[p.answer_id as usize];
-            let index = mphf.index(prefix) as usize;
+            let index = long_phf.index(prefix) as usize;
             long_info[index] = *p;
         }
 
         let static_lpm = StaticLongestPrefixMatcher {
-            short_dictionary,
-            long_dictionary: mphf,
+            short_answer,
+            long_phf,
             long_info,
-            buckets,
+            long_buckets,
+            medium_phf,
+            medium_info,
+            medium_buckets,
         };
 
         (static_lpm, remap_ids)
@@ -215,7 +336,7 @@ impl LongestPrefixMatcher {
 
 #[repr(align(32))] // Ensure 32-byte alignment
 #[derive(Default, Copy, Clone)]
-struct InfoLongMatch {
+struct LongMatchInfo {
     pub prefix: u64,
     pub inline_suffixes: [u64; 2],
     pub lengths: u16,
@@ -224,7 +345,7 @@ struct InfoLongMatch {
     pub answer_id: u16,
 }
 
-impl InfoLongMatch {
+impl LongMatchInfo {
     #[inline]
     fn decode_lengths(lengths: u16) -> (u8, u8, [u8; 2]) {
         let answer_length = (lengths >> (16 - 3)) as u8 + 1;
@@ -237,7 +358,7 @@ impl InfoLongMatch {
             [first_suffix_lengths, second_suffix_lengths],
         )
     }
-
+    
     #[inline]
     fn encode_lengths(
         answer_length: u8,
@@ -246,18 +367,59 @@ impl InfoLongMatch {
     ) -> u16 {
         let mut res = (answer_length as u16 - 1) << (16 - 3); // value in [1, 8] using 3 bits
         res |= (number_suffixes as u16) << (16 - 3 - 7); // value in [0, 128) using 7 bits
-        res |= (first_suffixes_lengths[0] as u16 - 1) << (16 - 3 - 7 - 3); // value in [1, 8) using 3 bits
-        res |= (first_suffixes_lengths[1] as u16 - 1) << (16 - 3 - 7 - 3 - 3); // value in [1, 8) using 3 bits
+        res |= (first_suffixes_lengths[0] as u16 - 1) << (16 - 3 - 7 - 3); // value in [1, 8] using 3 bits
+        res |= (first_suffixes_lengths[1] as u16 - 1) << (16 - 3 - 7 - 3 - 3); // value in [1, 8] using 3 bits
+    
+        res
+    }
+}
 
+#[derive(Default, Copy, Clone)]
+struct MediumMatchInfo {
+    pub prefix: u32,
+    pub inline_suffixes: [u32; 2],
+    pub lengths: u32,
+    pub offset: u16, 
+    pub base_id: u16,
+    pub answer_id: u16,
+}
+
+impl MediumMatchInfo {
+    #[inline]
+    fn decode_lengths(lengths: u32) -> (u8, u16, [u8; 2]) {
+        let answer_length = ((lengths >> (32 - 3)) & 0b111) as u8 + 1;
+        let number_suffixes = ((lengths >> (32 - 3 - 16)) & 0b1111111111111111) as u16;
+        let first_suffix_lengths = ((lengths >> (32 - 3 - 16 - 3)) & 0b111) as u8 + 1;
+        let second_suffix_lengths = ((lengths >> (32 - 3 - 16 - 3 - 3)) & 0b111) as u8 + 1;
+        (
+            answer_length,
+            number_suffixes,
+            [first_suffix_lengths, second_suffix_lengths],
+        )
+    }
+    
+    #[inline]
+    fn encode_lengths(
+        answer_length: u8,
+        number_suffixes: u16,
+        first_suffixes_lengths: [u8; 2],
+    ) -> u32 {
+        let mut res = ((answer_length as u32 - 1) & 0b111) << (32 - 3);
+        res |= ((number_suffixes as u32) & 0b1111111111111111) << (32 - 3 - 16);
+        res |= ((first_suffixes_lengths[0] as u32 - 1) & 0b111) << (32 - 3 - 16 - 3);
+        res |= ((first_suffixes_lengths[1] as u32 - 1) & 0b111) << (32 - 3 - 16 - 3 - 3);
         res
     }
 }
 
 pub struct StaticLongestPrefixMatcher {
-    short_dictionary: FxHashMap<(u64, u8), u16>,
-    long_dictionary: PH<u64, Linear>,
-    long_info: Vec<InfoLongMatch>,
-    buckets: Vec<(u64, u8)>,
+    short_answer: Vec<(u16, u8)>,
+    long_phf: PH<u64, Linear>,
+    long_info: Vec<LongMatchInfo>,
+    long_buckets: Vec<(u64, u8)>,
+    medium_phf: PH<u64, Linear>,
+    medium_info: Vec<MediumMatchInfo>,
+    medium_buckets: Vec<(u32, u8)>,
 }
 
 impl StaticLongestPrefixMatcher {
@@ -275,50 +437,87 @@ impl StaticLongestPrefixMatcher {
             }
         }
 
-        // Short match handling
-        let mut prefix = bytes_to_u64_le(&data, 8);
-        for length in (1..=7.min(data.len())).rev() {
-            prefix = prefix & MASKS[length];
-            if let Some(&id) = self.short_dictionary.get(&(prefix, length as u8)) {
-                return Some((id, length));
+        // Medium match handling
+        if data.len() >= 4 {
+            let suffix_len = data.len().min(7) - 4;
+            let prefix = bytes_to_u64_le(&data, 4);
+            let suffix = bytes_to_u64_le(&data[4..], suffix_len);
+
+            let medium_answer = self.compute_medium_answer(prefix, suffix, suffix_len);
+            if medium_answer.is_some() {
+                return medium_answer;
             }
         }
 
-        unreachable!("A match is guaranteed to be found before this is reached.");
+        // Short match handling
+        let len = data.len().min(3);
+        let prefix = bytes_to_u64_le(&data, len) as usize;
+        let (id, len) = self.short_answer[prefix];
+        return Some((id, len as usize));
     }
 
     #[inline]
     pub fn compute_long_answer(&self, prefix: u64, suffix: u64, suffix_len: usize) -> Option<(u16, usize)> {
-        let index = self.long_dictionary.index(&prefix);
+        let index = self.long_phf.index(&prefix);
 
         if index >= self.long_info.len() || prefix != self.long_info[index].prefix {
             return None;
         }
 
         let long_info = &self.long_info[index];
-        let (answer_length, number_suffixes, inline_suffixes_len) = InfoLongMatch::decode_lengths(long_info.lengths);
+        let (answer_length, number_suffixes, inline_suffixes_len) = LongMatchInfo::decode_lengths(long_info.lengths);
 
         // First inlined suffix
-        let inline_suffix = long_info.inline_suffixes[0];
-        if is_prefix(suffix, inline_suffix, suffix_len, inline_suffixes_len[0] as usize) {
+        if number_suffixes > 0 && is_prefix(suffix, long_info.inline_suffixes[0], suffix_len, inline_suffixes_len[0] as usize) {
             return Some((long_info.base_id - 1, 8 + inline_suffixes_len[0] as usize));
         }
 
         // Second inlined suffix
-        let inline_suffix = long_info.inline_suffixes[1];
-        if is_prefix(suffix, inline_suffix, suffix_len, inline_suffixes_len[1] as usize) {
+        if number_suffixes > 1 && is_prefix(suffix, long_info.inline_suffixes[1], suffix_len, inline_suffixes_len[1] as usize) {
             return Some((long_info.base_id - 2, 8 + inline_suffixes_len[1] as usize));
         }
 
-        for i in 0..number_suffixes {
+        for i in 0..number_suffixes.saturating_sub(2) {
             let item_pos = long_info.offset as usize + i as usize;
-            let item = &self.buckets[item_pos];
+            let item = &self.long_buckets[item_pos];
             if is_prefix(suffix, item.0, suffix_len, item.1 as usize) {
                 return Some((long_info.base_id + i as u16, 8 + item.1 as usize));
             }
         }
         
         return Some((long_info.answer_id, answer_length as usize));
+    }
+
+    #[inline]
+    pub fn compute_medium_answer(&self, prefix: u64, suffix: u64, suffix_len: usize) -> Option<(u16, usize)> {
+        let index = self.medium_phf.index(&prefix);
+
+        if index >= self.medium_info.len() || prefix != self.medium_info[index].prefix as u64 {
+            return None;
+        }
+
+        let medium_info = &self.medium_info[index];
+        let (answer_length, number_suffixes, inline_suffixes_len) = MediumMatchInfo::decode_lengths(medium_info.lengths);
+
+        // First inlined suffix
+        if number_suffixes > 0 && is_prefix(suffix, medium_info.inline_suffixes[0] as u64, suffix_len, inline_suffixes_len[0] as usize) {
+            return Some((medium_info.base_id - 1, 4 + inline_suffixes_len[0] as usize));
+        }
+
+        // Second inlined suffix
+        if number_suffixes > 1 && is_prefix(suffix, medium_info.inline_suffixes[1] as u64, suffix_len, inline_suffixes_len[1] as usize) {
+            return Some((medium_info.base_id - 2, 4 + inline_suffixes_len[1] as usize));
+        }
+
+        for i in 0..number_suffixes.saturating_sub(2) {
+            let item_pos = medium_info.offset as usize + i as usize;
+            let item = &self.medium_buckets[item_pos];
+            if is_prefix(suffix, item.0 as u64, suffix_len, item.1 as usize) {
+                return Some((medium_info.base_id + i as u16, 4 + item.1 as usize));
+            }
+        }
+        
+        return Some((medium_info.answer_id, answer_length as usize));
     }
 }
 
@@ -340,4 +539,21 @@ fn is_prefix(text: u64, prefix: u64, text_size: usize, prefix_size: usize) -> bo
 #[inline(always)]
 fn shared_prefix_size(a: u64, b: u64) -> usize {
     ((a ^ b).trailing_zeros() >> 3) as usize
+}
+
+fn u64_to_string(n: u64) -> String {
+    let mut result = String::new();
+    let mut num = n;
+
+    // Iterate through each byte in the u64, starting from the least significant byte
+    while num > 0 {
+        let byte = (num & 0xFF) as u8; // Get the least significant byte
+        if byte == 0 {
+            break; // Stop if we encounter a 0 byte
+        }
+        result.push(byte as char); // Convert the byte to a char and add to the result string
+        num >>= 8; // Shift the number right by 8 bits to process the next byte
+    }
+
+    result
 }
