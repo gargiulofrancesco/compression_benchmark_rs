@@ -23,9 +23,8 @@ impl Compressor for CopyCompressor {
     fn compress(&mut self, data: &[u8], end_positions: &[usize]) {
         // Copy end positions
         unsafe {
-            self.offsets[0] = 0;
             let src = end_positions.as_ptr();
-            let dst = self.offsets.as_mut_ptr().add(1);
+            let dst = self.offsets.as_mut_ptr();
             std::ptr::copy_nonoverlapping(src, dst, end_positions.len());
         }
 

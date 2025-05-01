@@ -39,12 +39,13 @@ fn print_dataset_statistics(folder: &str) {
             // Load dataset and process it
             let dataset = Dataset::load(dataset_path);
             let (dataset_name, data, end_positions, _) = process_dataset(&dataset);
+            let n: usize = end_positions.len() - 1;
             
             println!("Dataset Name: {}, Uncompressed Size (MB): {:.2}, Rows: {}, Avg Entry Length (B): {:.2}", 
                 dataset_name,
                 data.len() as f64 / (1024.0 * 1024.0),
-                end_positions.len(),
-                data.len() as f64 / end_positions.len() as f64,
+                n,
+                data.len() as f64 / n as f64,
                 
             );
         }

@@ -1,4 +1,5 @@
 use compression_benchmark_rs::benchmark_utils::*;
+use compression_benchmark_rs::compressor::bpe::BPECompressor;
 use compression_benchmark_rs::compressor::Compressor;
 use compression_benchmark_rs::compressor::copy::CopyCompressor;
 use compression_benchmark_rs::compressor::lz4::LZ4Compressor;
@@ -16,6 +17,7 @@ enum CompressorEnum {
     LZ4(LZ4Compressor),
     Snappy(SnappyCompressor),
     Zstd(ZstdCompressor),
+    BPE(BPECompressor),
     OnPair(OnPairCompressor), 
     OnPair16(OnPair16Compressor),
 }
@@ -57,12 +59,13 @@ fn main() {
 
     // Initialize the compressor
     let mut compressor = match compressor_name.as_str() {
-        "copy" => CompressorEnum::Copy(CopyCompressor::new(data.len(), end_positions.len())),
-        "lz4" => CompressorEnum::LZ4(LZ4Compressor::new(data.len(), end_positions.len())),
-        "snappy" => CompressorEnum::Snappy(SnappyCompressor::new(data.len(), end_positions.len())),
-        "zstd" => CompressorEnum::Zstd(ZstdCompressor::new(data.len(), end_positions.len())),
-        "onpair" => CompressorEnum::OnPair(OnPairCompressor::new(data.len(), end_positions.len())),
-        "onpair16" => CompressorEnum::OnPair16(OnPair16Compressor::new(data.len(), end_positions.len())),
+        "copy" => CompressorEnum::Copy(CopyCompressor::new(data.len(), end_positions.len()-1)),
+        "lz4" => CompressorEnum::LZ4(LZ4Compressor::new(data.len(), end_positions.len()-1)),
+        "snappy" => CompressorEnum::Snappy(SnappyCompressor::new(data.len(), end_positions.len()-1)),
+        "zstd" => CompressorEnum::Zstd(ZstdCompressor::new(data.len(), end_positions.len()-1)),
+        "bpe" => CompressorEnum::BPE(BPECompressor::new(data.len(), end_positions.len()-1)),
+        "onpair" => CompressorEnum::OnPair(OnPairCompressor::new(data.len(), end_positions.len()-1)),
+        "onpair16" => CompressorEnum::OnPair16(OnPair16Compressor::new(data.len(), end_positions.len()-1)),
         _ => {
             eprintln!("Unknown compressor: {}", compressor_name);
             std::process::exit(1);
@@ -74,6 +77,7 @@ fn main() {
         CompressorEnum::LZ4(ref mut c) => benchmark(c, dataset_name, &data, &end_positions, &queries),
         CompressorEnum::Snappy(ref mut c) => benchmark(c, dataset_name, &data, &end_positions, &queries),
         CompressorEnum::Zstd(ref mut c) => benchmark(c, dataset_name, &data, &end_positions, &queries),
+        CompressorEnum::BPE(ref mut c) => benchmark(c, dataset_name, &data, &end_positions, &queries),
         CompressorEnum::OnPair(ref mut c) => benchmark(c, dataset_name, &data, &end_positions, &queries),
         CompressorEnum::OnPair16(ref mut c) => benchmark(c, dataset_name, &data, &end_positions, &queries),
     };
@@ -93,10 +97,7 @@ fn benchmark<T: Compressor>(
     buffer.resize(data.len() + 1024, 0);
 
     let data_bytes = data.len() as f64;
-    let random_access_bytes: usize = queries.iter().map(|&i| {
-        let prev_position = if i == 0 { 0 } else { end_positions[i - 1] };
-        end_positions[i] - prev_position
-    }).sum();    
+    let random_access_bytes: usize = queries.iter().map(|&i| { end_positions[i+1] - end_positions[i] }).sum();    
 
     // Compression
     let start_compression = Instant::now();
@@ -119,8 +120,8 @@ fn benchmark<T: Compressor>(
     // Random Access
     let mut random_access_times = Vec::new();
     for &query in queries {
-        let start_position = if query == 0 { 0 } else { end_positions[query - 1] };
-        let end_position = end_positions[query];
+        let start_position = end_positions[query];
+        let end_position = end_positions[query+1];
         let item_size = end_position - start_position;
 
         let start_random_access = Instant::now();

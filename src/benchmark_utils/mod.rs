@@ -62,12 +62,12 @@ pub fn process_dataset(dataset: &Dataset) -> (String, Vec<u8>, Vec<usize>, Vec<u
     let dataset_name = dataset.dataset_name.clone();
     let data: Vec<u8> = dataset.data.iter().flat_map(|s| s.as_bytes()).copied().collect();
     let queries: Vec<usize> = dataset.queries.clone();
-    let end_positions: Vec<usize> = dataset.data.iter()
-        .scan(0, |state, s| {
-            *state += s.len();
-            Some(*state)
-        })
-        .collect();
+    let mut end_positions: Vec<usize> = Vec::new();
+
+    end_positions.push(0);
+    for s in dataset.data.iter() {
+        end_positions.push(end_positions.last().unwrap() + s.len());
+    }
 
     (dataset_name, data, end_positions, queries)
 }

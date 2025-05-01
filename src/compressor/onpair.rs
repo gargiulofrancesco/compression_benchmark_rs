@@ -109,20 +109,20 @@ impl OnPairCompressor {
             self.dictionary.extend(&token);
             self.dictionary_end_positions.push(self.dictionary.len() as u32);
         }
-
-        let mut start = 0;
-        let mut pos = 0;
         
-        'outer: for &end in end_positions.iter() {
+        'outer: for window in end_positions.windows(2) {
+            let start = window[0];
+            let end = window[1];
+
             if start == end {
                 continue;
             }
     
-            let (match_token_id, match_length) = lpm.find_longest_match(&data[pos..end]).unwrap();
+            let (match_token_id, match_length) = lpm.find_longest_match(&data[start..end]).unwrap();
             let mut previous_token_id = match_token_id;
             let mut previous_length = match_length;
 
-            pos = start + previous_length;
+            let mut pos = start + previous_length;
     
             while pos < end {
                 if next_token_id == 65535 {
@@ -150,8 +150,6 @@ impl OnPairCompressor {
     
                 pos += match_length;
             }
-    
-            start = end;
         }
     
         lpm
@@ -159,10 +157,11 @@ impl OnPairCompressor {
     
     fn parse(&mut self, data: &[u8], end_positions: &[usize], lpm: &LongestPrefixMatcher<u16>) {
         self.item_end_positions.push(0);
-    
-        let mut start = 0;
 
-        for &end in end_positions.iter() {
+        for window in end_positions.windows(2) {
+            let start = window[0];
+            let end = window[1];
+
             if start == end {
                 self.item_end_positions.push(self.compressed_data.len());
                 continue;
@@ -177,7 +176,6 @@ impl OnPairCompressor {
             }
     
             self.item_end_positions.push(self.compressed_data.len());
-            start = end;
         }
     }    
 }

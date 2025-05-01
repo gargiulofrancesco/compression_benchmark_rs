@@ -87,7 +87,7 @@ pub trait BlockCompressor: Compressor {
         let mut current_block_size = 0;     // Total size of the current block
         let mut item_start = 0;             // Start of the current item
 
-        for &item_end in end_positions {
+        for &item_end in end_positions.iter().skip(1) {
             let item_size = item_end - item_start;
             
             if current_block_size + item_size > block_size {
@@ -190,19 +190,15 @@ pub trait BlockCompressor: Compressor {
             blocks_metadata[block_index - 1].num_items_psum
         };
 
-        let start = if item_index > 0 {
-            item_positions[item_index - 1]
-        } else {
-            0
-        };
+        let start = item_positions[item_index];
+        let end = item_positions[item_index+1];
 
         let adjustment = if first_item_index > 0 {
-            item_positions[first_item_index - 1]
+            item_positions[first_item_index]
         } else {
             0
         };
-
-        let end = item_positions[item_index];
+        
         (start - adjustment, end - adjustment)
     }
 }

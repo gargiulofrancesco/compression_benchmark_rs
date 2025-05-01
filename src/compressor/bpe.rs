@@ -2,9 +2,10 @@
 
 use super::Compressor;
 use crate::bit_vector::BitVector;
-use std::arch::x86_64::*;
 use std::collections::BinaryHeap;
 use rustc_hash::{FxHashMap, FxHashSet};
+
+const FAST_ACCESS_SIZE: usize = 16;
 
 pub struct BPECompressor {
     compressed_data: Vec<u16>,                             // Store the compressed data as bytes
@@ -24,7 +25,7 @@ impl Compressor for BPECompressor {
     }
 
     fn compress(&mut self, data: &[u8], end_positions: &[usize]) {
-        let end_positions_set: FxHashSet<usize> = end_positions.iter().copied().collect();
+        let end_positions_set: FxHashSet<usize> = end_positions.iter().skip(1).copied().collect();
         let mut next_id: u16 = 256;
 
         let mut bv = BitVector::with_ones(data.len());
@@ -48,65 +49,61 @@ impl Compressor for BPECompressor {
     }
 
     fn decompress(&self, buffer: &mut [u8]) -> usize {
-        unsafe {
-            let data_ptr = self.compressed_data.as_ptr();
-            let dict_ptr = self.dictionary.as_ptr();
-            let end_positions_ptr = self.dictionary_end_positions.as_ptr();
-            let mut size = 0;
-    
-            for i in 0..self.compressed_data.len() {
-                let token_id = *data_ptr.add(i) as usize;
-                
-                // Access dictionary positions using raw pointers
+        let dict_ptr = self.dictionary.as_ptr();
+        let end_positions_ptr = self.dictionary_end_positions.as_ptr();
+        let mut size = 0;
+
+        for &token_id in self.compressed_data.iter(){
+            unsafe {
                 let dict_start = *end_positions_ptr.add(token_id as usize) as usize;
                 let dict_end = *end_positions_ptr.add(token_id as usize + 1) as usize;
                 let length = dict_end - dict_start;
 
-                // Use SIMD to copy 16 bytes (128 bits) at a time to the buffer
-                let src_ptr = dict_ptr.add(dict_start) as *const __m128i;
-                let dst_ptr = buffer.as_mut_ptr().add(size) as *mut __m128i;
+                let mut src = dict_ptr.add(dict_start);
+                let mut dst = buffer.as_mut_ptr().add(size);
+                std::ptr::copy_nonoverlapping(src, dst, FAST_ACCESS_SIZE);
 
-                // Load 16 bytes from dictionary and store into buffer
-                let data = _mm_loadu_si128(src_ptr);
-                _mm_storeu_si128(dst_ptr, data);
+                if length > FAST_ACCESS_SIZE {
+                    src = src.add(FAST_ACCESS_SIZE); 
+                    dst = dst.add(FAST_ACCESS_SIZE);
+                    std::ptr::copy_nonoverlapping(src, dst, length - FAST_ACCESS_SIZE);
+                }
 
                 size += length;
             }
-            
-            size
         }
+
+        size
     }
 
     fn get_item_at(&mut self, index: usize, buffer: &mut [u8]) -> usize {
-        unsafe {
-            let start = *self.item_end_positions.as_ptr().add(index);
-            let end = *self.item_end_positions.as_ptr().add(index + 1);
+        let item_start = self.item_end_positions[index];
+        let item_end = self.item_end_positions[index + 1];
+        let dict_ptr = self.dictionary.as_ptr();
+        let end_positions_ptr = self.dictionary_end_positions.as_ptr();
+        let mut size = 0;
 
-            // Set up raw pointers to data structures to avoid bounds checking
-            let data_ptr = self.compressed_data.as_ptr();
-            let dict_ptr = self.dictionary.as_ptr();
-            let end_positions_ptr = self.dictionary_end_positions.as_ptr();
-            let mut size = 0;
+        for &token_id in self.compressed_data[item_start..item_end].iter() {
+            unsafe {
+                let dict_start = *end_positions_ptr.add(token_id as usize) as usize;
+                let dict_end = *end_positions_ptr.add(token_id as usize + 1) as usize;
+                let length = dict_end - dict_start;
 
-            for pos in start..end {
-                let token_id = *data_ptr.add(pos) as usize;
+                let mut src = dict_ptr.add(dict_start);
+                let mut dst = buffer.as_mut_ptr().add(size);
+                std::ptr::copy_nonoverlapping(src, dst, FAST_ACCESS_SIZE);
 
-                let dict_start = *end_positions_ptr.add(token_id) as usize;
-                let length = *end_positions_ptr.add(1 + token_id) as usize - dict_start;
-
-                // Use SIMD to copy 16 bytes (128 bits) at a time to the buffer
-                let src_ptr = dict_ptr.add(dict_start) as *const __m128i;
-                let dst_ptr = buffer.as_mut_ptr().add(size) as *mut __m128i;
-
-                // Load 16 bytes from dictionary and store into buffer
-                let data = _mm_loadu_si128(src_ptr);
-                _mm_storeu_si128(dst_ptr, data);
+                if length > FAST_ACCESS_SIZE {
+                    src = src.add(FAST_ACCESS_SIZE); 
+                    dst = dst.add(FAST_ACCESS_SIZE);
+                    std::ptr::copy_nonoverlapping(src, dst, length - FAST_ACCESS_SIZE);
+                }
 
                 size += length;
             }
-
-            size
         }
+
+        size
     }
 
     fn space_used_bytes(&self) -> usize {
@@ -383,9 +380,11 @@ fn get_new_token_ids(bv: &BitVector, token_ids: &[u16]) -> Vec<u16> {
 fn get_new_strings_separators(bv: &BitVector, end_positions: &[usize]) -> Vec<usize> {
     let mut new_strings_separators = Vec::new();
     let mut current_size = 0;
-    let mut start = 0;
 
-    for &end in end_positions.iter(){
+    for window in end_positions.windows(2) {
+        let start = window[0];
+        let end = window[1];
+        
         // Handle empty strings
         if start == end {
             new_strings_separators.push(current_size);
@@ -399,8 +398,6 @@ fn get_new_strings_separators(bv: &BitVector, end_positions: &[usize]) -> Vec<us
             }
             current_size += 1;
         }
-
-        start = end;
     }
 
     new_strings_separators.push(current_size);

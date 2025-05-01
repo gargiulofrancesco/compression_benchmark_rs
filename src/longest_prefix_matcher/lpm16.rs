@@ -1,10 +1,6 @@
 use rustc_hash::FxHashMap;
 use serde::{Serialize, Deserialize};
-use bucket_fn::Linear;
-use cacheline_ef::CachelineEfVec;
-use ptr_hash::{PtrHash, PtrHashParams};
-use ptr_hash::*;
-type PH<Key, BF> = PtrHash<Key, BF, CachelineEfVec, hash::FxHash, Vec<u8>>;
+use ptr_hash::{bucket_fn::Linear, PtrHash, PtrHashParams};
 
 const N_INLINE_SUFFIXES: usize = 4;
 const MAX_BUCKET_SIZE: usize = 128;
@@ -160,7 +156,7 @@ where
         }
 
         let prefixes = long_dictionary.keys().copied().collect::<Vec<_>>();
-        let long_phf = PH::<_, Linear>::new(&prefixes, PtrHashParams::default_fast());
+        let long_phf = PtrHash::new(&prefixes, PtrHashParams::default_fast());
         let max = prefixes.iter()
             .map(|prefix| long_phf.index(prefix))
             .fold(0, |acc, idx| acc.max(idx));
@@ -201,7 +197,7 @@ where
     V: Copy + Default + Into<usize>,
 {
     short_dictionary: FxHashMap<(u64, u8), V>,
-    long_phf: PH<u64, Linear>,
+    long_phf: PtrHash<u64, Linear>,
     long_info: Vec<LongMatchInfo<V>>,
     long_buckets: Vec<(u64, u8, V)>,
 }
