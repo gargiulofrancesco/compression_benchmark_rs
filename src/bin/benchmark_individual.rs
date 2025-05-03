@@ -11,6 +11,7 @@ use std::path::Path;
 use std::time::Instant;
 
 const DEFAULT_CORE_ID: usize = 0;
+const N_QUERIES: usize = 1000000;
 
 enum CompressorEnum {
     Copy(CopyCompressor),
@@ -54,8 +55,10 @@ fn main() {
     set_affinity(core_id);
 
     // Load dataset
-    let dataset = Dataset::load(dataset_path);
-    let (dataset_name, data, end_positions, queries) = process_dataset(&dataset);
+    let dataset_name = dataset_path.file_name().unwrap().to_str().unwrap().to_string();
+    let (data, end_positions) = process_dataset(dataset_path);
+    let n_elements = end_positions.len() - 1;
+    let queries = generate_random_queries(n_elements, N_QUERIES);
 
     // Initialize the compressor
     let mut compressor = match compressor_name.as_str() {

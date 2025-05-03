@@ -42,8 +42,8 @@ fn main() {
     set_affinity(core_id);
 
     // Load dataset
-    let dataset = Dataset::load(dataset_path);
-    let (dataset_name, data, _, _) = process_dataset(&dataset);
+    let dataset_name = dataset_path.file_name().unwrap().to_str().unwrap();
+    let (data, _) = process_dataset(dataset_path);
     let result: BenchmarkResult;
 
     match compressor_name.as_str() {
