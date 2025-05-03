@@ -1,9 +1,12 @@
 use crate::longest_prefix_matcher::lpm::LongestPrefixMatcher;
 use super::Compressor;
 use rustc_hash::FxHashMap;
+use rand::seq::SliceRandom;
+use rand::thread_rng;
 
 const THRESHOLD: usize = 10;
 const FAST_ACCESS_SIZE: usize = 16;
+const SAMPLE_SIZE: usize = 32 * 1024 * 1024;
 
 pub struct OnPairCompressor {
     compressed_data: Vec<u16>,                  // Store the compressed data as token IDs
@@ -23,7 +26,8 @@ impl Compressor for OnPairCompressor {
     }
 
     fn compress(&mut self, data: &[u8], end_positions: &[usize]) {
-        let lpm = self.train(data, end_positions);
+        let (sampled_data, sampled_end_positions) = Self::sampling(data, end_positions, SAMPLE_SIZE);
+        let lpm = self.train(&sampled_data, &sampled_end_positions);
         self.parse(data, end_positions, &lpm);
     }
 
@@ -177,5 +181,30 @@ impl OnPairCompressor {
     
             self.item_end_positions.push(self.compressed_data.len());
         }
-    }    
+    }
+
+    fn sampling(data: &[u8], end_positions: &[usize], sample_size: usize) -> (Vec<u8>, Vec<usize>) {
+        let n = end_positions.len() - 1;
+        let mut sampled_indices: Vec<usize> = (0..n).collect();
+        sampled_indices.shuffle(&mut thread_rng());
+
+        let mut sampled_data = Vec::new();
+        let mut sampled_end_positions = Vec::with_capacity(n + 1);
+        sampled_end_positions.push(0);
+
+        for &index in &sampled_indices {
+            let start = end_positions[index];
+            let end = end_positions[index + 1];
+            let item = &data[start..end];
+
+            if sampled_data.len() + item.len() > sample_size {
+                break;
+            }
+
+            sampled_data.extend_from_slice(item);
+            sampled_end_positions.push(sampled_data.len());
+        }
+
+        (sampled_data, sampled_end_positions)
+    }
 }
