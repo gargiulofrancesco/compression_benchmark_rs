@@ -74,9 +74,14 @@ impl Compressor for BPECompressor {
             positions.sort();
 
             // Add the new token to the dictionary
-            let start = positions[0] as usize;
-            let end = bv.next_one(bv.next_one(start).unwrap()).unwrap_or(bv.len());
-            self.dictionary.extend(&data[start..end]);
+            let t1_start = self.dictionary_end_positions[t1 as usize] as usize;
+            let t1_end = self.dictionary_end_positions[t1 as usize + 1] as usize;
+            let t2_start = self.dictionary_end_positions[t2 as usize] as usize;
+            let t2_end = self.dictionary_end_positions[t2 as usize + 1] as usize;
+            let t1_data = self.dictionary[t1_start..t1_end].to_vec();
+            let t2_data = self.dictionary[t2_start..t2_end].to_vec();
+            self.dictionary.extend(&t1_data);
+            self.dictionary.extend(&t2_data);
             self.dictionary_end_positions.push(self.dictionary.len() as u32);
 
             // Store updated pairs to minimize insertions in the max_freq heap
