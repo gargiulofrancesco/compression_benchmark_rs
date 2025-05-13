@@ -119,6 +119,8 @@ impl BPELPMCompressor {
 
         // The bitvector inidicates with zeroes the positions of merged bytes
         let mut bv = BitVector::with_ones(data.len());
+        
+        // Strings end positions are used to avoid merging pairs that cross multiple strings
         let end_positions_set: FxHashSet<usize> = end_positions.iter().skip(1).copied().collect();
 
         // Initialize pair positions  
