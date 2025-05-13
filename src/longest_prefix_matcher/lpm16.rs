@@ -1,5 +1,4 @@
 use rustc_hash::FxHashMap;
-use serde::{Serialize, Deserialize};
 use ptr_hash::{bucket_fn::Linear, PtrHash, PtrHashParams};
 
 const N_INLINE_SUFFIXES: usize = 4;
@@ -17,16 +16,12 @@ const MASKS: [u64; 9] = [
     0xFFFFFFFFFFFFFFFF, // 8 bytes
 ];
 
-#[derive(Serialize, Deserialize)]
-pub struct LongestPrefixMatcher<V> {
-    dictionary: FxHashMap<(u64, u8), V>, 
-    buckets: FxHashMap<u64, Vec<(u64, u8, V)>>, 
+pub struct LongestPrefixMatcher {
+    dictionary: FxHashMap<(u64, u8), u16>, 
+    buckets: FxHashMap<u64, Vec<(u64, u8, u16)>>, 
 }
 
-impl<V> LongestPrefixMatcher<V> 
-where 
-    V: Copy + Into<usize> + std::default::Default,
-{   
+impl LongestPrefixMatcher{   
     pub fn new() -> Self {
         Self {
             dictionary: FxHashMap::default(),
@@ -35,7 +30,7 @@ where
     }
 
     #[inline]
-    pub fn insert(&mut self, data: &[u8], id: V) -> bool {
+    pub fn insert(&mut self, data: &[u8], id: u16) -> bool {
         let length = data.len();
 
         if length <= 8 {
@@ -61,7 +56,7 @@ where
     }
 
     #[inline]
-    pub fn find_longest_match(&self, data: &[u8]) -> Option<(V, usize)> {
+    pub fn find_longest_match(&self, data: &[u8]) -> Option<(u16, usize)> {
         // Long match handling
         if data.len() > 8 {
             let suffix_len = data.len().min(16) - 8;
@@ -89,7 +84,7 @@ where
         unreachable!("A match is guaranteed to be found before this is reached.");
     }
 
-    pub fn finalize(&self) -> StaticLongestPrefixMatcher<V> {
+    pub fn finalize(&self) -> StaticLongestPrefixMatcher {
         let mut long_dictionary = FxHashMap::default();
         let mut long_buckets = Vec::new();
         
@@ -100,7 +95,7 @@ where
             
             let mut inline_suffixes: [u64; N_INLINE_SUFFIXES] = [0; N_INLINE_SUFFIXES];
             let mut inline_lengths: [u8; N_INLINE_SUFFIXES] = [0; N_INLINE_SUFFIXES];
-            let mut inline_ids: [V; N_INLINE_SUFFIXES] = [V::default(); N_INLINE_SUFFIXES];
+            let mut inline_ids: [u16; N_INLINE_SUFFIXES] = [0; N_INLINE_SUFFIXES];
 
             for i in 0..N_INLINE_SUFFIXES.min(bucket.len()) {
                 inline_suffixes[i] = bucket[i].0;
@@ -143,7 +138,7 @@ where
                     n_suffixes: 0,
                     inline_suffixes: [0; N_INLINE_SUFFIXES],
                     inline_lengths: [0; N_INLINE_SUFFIXES],
-                    inline_ids: [V::default(); N_INLINE_SUFFIXES],
+                    inline_ids: [0; N_INLINE_SUFFIXES],
                     offset: 0,
                 };
 
@@ -178,36 +173,27 @@ where
 
 #[repr(align(64))] // Ensure 64-byte alignment
 #[derive(Default, Copy, Clone)]
-struct LongMatchInfo<V>
-where
-    V: Copy + Default + Into<usize>,
-{
+struct LongMatchInfo{
     pub prefix: u64,
     pub inline_suffixes: [u64; N_INLINE_SUFFIXES],
     pub inline_lengths: [u8; N_INLINE_SUFFIXES],
-    pub inline_ids: [V; N_INLINE_SUFFIXES],
+    pub inline_ids: [u16; N_INLINE_SUFFIXES],
     pub n_suffixes: u16,
     pub offset: u16,
-    pub answer_id: V,
+    pub answer_id: u16,
     pub answer_length: u8,
 }
 
-pub struct StaticLongestPrefixMatcher<V>
-where
-    V: Copy + Default + Into<usize>,
-{
-    short_dictionary: FxHashMap<(u64, u8), V>,
+pub struct StaticLongestPrefixMatcher{
+    short_dictionary: FxHashMap<(u64, u8), u16>,
     long_phf: PtrHash<u64, Linear>,
-    long_info: Vec<LongMatchInfo<V>>,
-    long_buckets: Vec<(u64, u8, V)>,
+    long_info: Vec<LongMatchInfo>,
+    long_buckets: Vec<(u64, u8, u16)>,
 }
 
-impl<V> StaticLongestPrefixMatcher<V>
-where
-    V: Copy + Default + Into<usize>,
-{
+impl StaticLongestPrefixMatcher{
     #[inline]
-    pub fn find_longest_match(&self, data: &[u8]) -> Option<(V, usize)> {
+    pub fn find_longest_match(&self, data: &[u8]) -> Option<(u16, usize)> {
         // Long match handling
         if data.len() >= 8 {
             let suffix_len = data.len().min(16) - 8;
@@ -233,7 +219,7 @@ where
     }
 
     #[inline]
-    pub fn compute_long_answer(&self, prefix: u64, suffix: u64, suffix_len: usize) -> Option<(V, usize)> {
+    pub fn compute_long_answer(&self, prefix: u64, suffix: u64, suffix_len: usize) -> Option<(u16, usize)> {
         let index = self.long_phf.index(&prefix);
 
         if index >= self.long_info.len() || prefix != self.long_info[index].prefix {

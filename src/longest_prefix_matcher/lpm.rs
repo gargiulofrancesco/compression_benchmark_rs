@@ -14,17 +14,14 @@ const MASKS: [u64; 9] = [
 
 const MIN_MATCH: usize = 8;
 
-pub struct LongestPrefixMatcher<V> {
-    long_match_buckets: FxHashMap<u64, Vec<V>>,     // mapping from prefix (8 bytes) to bucket of dictionary IDs
-    short_match_lookup: FxHashMap<(u64, u8), V>,    // mapping from prefix (1-8 bytes) to dictionary ID 
+pub struct LongestPrefixMatcher {
+    long_match_buckets: FxHashMap<u64, Vec<u16>>,     // mapping from prefix (8 bytes) to bucket of dictionary IDs
+    short_match_lookup: FxHashMap<(u64, u8), u16>,    // mapping from prefix (1-8 bytes) to dictionary ID 
     dictionary: Vec<u8>,
     end_positions: Vec<u32>,
 }
 
-impl<V> LongestPrefixMatcher<V> 
-where 
-    V: Copy + Into<usize>,
-{   
+impl LongestPrefixMatcher {   
     pub fn new() -> Self {
         Self {
             long_match_buckets: FxHashMap::default(),
@@ -35,7 +32,7 @@ where
     }
 
     #[inline]
-    pub fn insert(&mut self, entry: &[u8], id: V) {
+    pub fn insert(&mut self, entry: &[u8], id: u16) {
         if entry.len() > MIN_MATCH {
             let prefix = Self::bytes_to_u64_le(&entry, MIN_MATCH);
             self.dictionary.extend_from_slice(&entry[MIN_MATCH..]);
@@ -44,10 +41,10 @@ where
             let bucket = self.long_match_buckets.entry(prefix).or_default();
             bucket.push(id);
             bucket.sort_unstable_by(|&id1, &id2| {
-                let len1 = self.end_positions[id1.into() + 1] as usize 
-                           - self.end_positions[id1.into()] as usize;
-                let len2 = self.end_positions[id2.into() + 1] as usize 
-                           - self.end_positions[id2.into()] as usize;
+                let len1 = self.end_positions[id1 as usize + 1] as usize 
+                           - self.end_positions[id1 as usize] as usize;
+                let len2 = self.end_positions[id2 as usize + 1] as usize 
+                           - self.end_positions[id2 as usize] as usize;
                 len2.cmp(&len1)
             });
         } else {
@@ -58,15 +55,15 @@ where
     }
 
     #[inline]
-    pub fn find_longest_match(&self, data: &[u8]) -> Option<(V, usize)> {
+    pub fn find_longest_match(&self, data: &[u8]) -> Option<(u16, usize)> {
         // Long match handling
         if data.len() > MIN_MATCH {
             let prefix = Self::bytes_to_u64_le(&data, MIN_MATCH);
             
             if let Some(bucket) = self.long_match_buckets.get(&prefix) {
                 for &id in bucket {
-                    let dict_start = self.end_positions[id.into()] as usize;
-                    let dict_end = self.end_positions[id.into() + 1] as usize;
+                    let dict_start = self.end_positions[id as usize] as usize;
+                    let dict_end = self.end_positions[id as usize + 1] as usize;
                     let length = dict_end - dict_start;
                     if data[MIN_MATCH..].starts_with(&self.dictionary[dict_start..dict_end]) {
                         return Some((id, MIN_MATCH + length));

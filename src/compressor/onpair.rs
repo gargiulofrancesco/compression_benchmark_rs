@@ -97,7 +97,7 @@ impl Compressor for OnPairCompressor {
 }
 
 impl OnPairCompressor {
-    fn train(&mut self, data: &[u8], end_positions: &[usize]) -> LongestPrefixMatcher<u16> {
+    fn train(&mut self, data: &[u8], end_positions: &[usize]) -> LongestPrefixMatcher {
         self.dictionary_end_positions.push(0);
         
         let mut frequency: FxHashMap<(u16, u16), usize> = FxHashMap::default();
@@ -162,7 +162,7 @@ impl OnPairCompressor {
         lpm
     }
     
-    fn parse(&mut self, data: &[u8], end_positions: &[usize], lpm: &LongestPrefixMatcher<u16>) {
+    fn parse(&mut self, data: &[u8], end_positions: &[usize], lpm: &LongestPrefixMatcher) {
         self.item_end_positions.push(0);
 
         for window in end_positions.windows(2) {

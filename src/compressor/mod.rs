@@ -3,6 +3,7 @@ pub mod lz4;
 pub mod snappy;
 pub mod zstd;
 pub mod bpe;
+pub mod bpe_lpm;
 pub mod onpair;
 pub mod onpair16;
 
