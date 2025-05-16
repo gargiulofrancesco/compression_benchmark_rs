@@ -148,13 +148,16 @@ impl OnPairCompressor {
                     self.dictionary.extend(merged_token);
                     self.dictionary_end_positions.push(self.dictionary.len() as u32);
                     
-                    next_token_id += 1;
                     frequency.remove(&(previous_token_id, match_token_id));
+                    previous_token_id = next_token_id;
+                    previous_length = merged_token.len();
+                    next_token_id += 1;
+                }
+                else {
+                    previous_token_id = match_token_id;
+                    previous_length = match_length;
                 }
             
-                previous_token_id = match_token_id;
-                previous_length = match_length;
-    
                 pos += match_length;
             }
         }

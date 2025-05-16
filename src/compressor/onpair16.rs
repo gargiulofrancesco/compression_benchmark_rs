@@ -131,25 +131,31 @@ impl OnPair16Compressor {
                 // Find the longest match
                 let (match_token_id, match_length) = lpm.find_longest_match(&data[pos..end]).unwrap();
 
+                let mut added_token = false;
                 if match_length + previous_length <= MAX_LENGTH {
                     // Update token frequency and possibly merge tokens
                     *frequency.entry((previous_token_id, match_token_id)).or_insert(0) += 1;
 
                     if frequency[&(previous_token_id, match_token_id)] > THRESHOLD {
                         let merged_token = &data[pos - previous_length..pos + match_length];
-                        let added_flag = lpm.insert(merged_token, next_token_id);
-                        if added_flag {
+                        added_token = lpm.insert(merged_token, next_token_id);
+                        if added_token {
                             self.dictionary.extend(merged_token);
                             self.dictionary_end_positions.push(self.dictionary.len() as u32);
     
-                            next_token_id += 1;
                             frequency.remove(&(previous_token_id, match_token_id));
+                            previous_token_id = next_token_id;
+                            previous_length = merged_token.len();
+                            next_token_id += 1;
                         }
                     }
                 }
-    
-                previous_token_id = match_token_id;
-                previous_length = match_length;
+
+                if !added_token {
+                    previous_token_id = match_token_id;
+                    previous_length = match_length;
+                }
+                
                 pos += match_length;
             }
         }
