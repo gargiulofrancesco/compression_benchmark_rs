@@ -7,7 +7,7 @@ use rand::seq::SliceRandom;
 use rand::thread_rng;
 
 const FAST_ACCESS_SIZE: usize = 16;
-const SAMPLE_SIZE_PERCENTAGE: f32 = 0.05; 
+const SAMPLE_SIZE_PERCENTAGE: f32 = 0.1; // 10% of the data size
 
 pub struct BPELPMCompressor {
     compressed_data: Vec<u16>,                  // Store the compressed data as bytes

@@ -5,7 +5,6 @@ use rustc_hash::FxHashMap;
 use rand::seq::SliceRandom;
 use rand::thread_rng;
 
-const THRESHOLD: usize = 10;
 const MAX_LENGTH: usize = 16;
 
 pub struct OnPair16Compressor {
@@ -92,7 +91,7 @@ impl OnPair16Compressor {
     fn train(&mut self, data: &[u8], end_positions: &[usize]) -> LongestPrefixMatcher {
         self.dictionary_end_positions.push(0);
 
-        let mut frequency: FxHashMap<(u16, u16), usize> = FxHashMap::default();
+        let mut frequency: FxHashMap<(u16, u16), u16> = FxHashMap::default();
         let mut lpm = LongestPrefixMatcher::new();
         let mut next_token_id = 256;
     
@@ -107,7 +106,13 @@ impl OnPair16Compressor {
         // Shuffle entries
         let mut shuffled_indices: Vec<usize> = (0..end_positions.len()-1).collect();
         shuffled_indices.shuffle(&mut thread_rng());
-        
+
+        // Initialize the adaptive threshold
+        let sample_size = (data.len() as f64 * 0.1) as usize; // 10% of the data size
+        let tokens_to_insert = u16::MAX as usize - 255; // 65536 - 256 tokens to insert
+        let update_period = ((1.00 + u16::MAX as f64) * 0.001).ceil() as usize; // 0.1% of the dictionary size
+        let mut threshold = Threshold::new(sample_size, tokens_to_insert, update_period);
+
         // Iterate over entries
         'outer: for &index in shuffled_indices.iter() {
             let start = end_positions[index];
@@ -122,6 +127,7 @@ impl OnPair16Compressor {
             let mut previous_length = match_length;
 
             let mut pos = start + previous_length;
+            threshold.update(match_length, false);
     
             while pos < end {
                 // Find the longest match
@@ -132,7 +138,7 @@ impl OnPair16Compressor {
                     // Update token frequency and possibly merge tokens
                     *frequency.entry((previous_token_id, match_token_id)).or_insert(0) += 1;
 
-                    if frequency[&(previous_token_id, match_token_id)] > THRESHOLD {
+                    if frequency[&(previous_token_id, match_token_id)] > threshold.get() {
                         let merged_token = &data[pos - previous_length..pos + match_length];
                         added_token = lpm.insert(merged_token, next_token_id);
                         if added_token {
@@ -146,7 +152,9 @@ impl OnPair16Compressor {
                             if next_token_id == u16::MAX {
                                 break 'outer;
                             }
+
                             next_token_id += 1;
+                            threshold.update(match_length, true);
                         }
                     }
                 }
@@ -154,6 +162,7 @@ impl OnPair16Compressor {
                 if !added_token {
                     previous_token_id = match_token_id;
                     previous_length = match_length;
+                    threshold.update(match_length, false);
                 }
                 
                 pos += match_length;
@@ -184,6 +193,62 @@ impl OnPair16Compressor {
             }
     
             self.item_end_positions.push(self.compressed_data.len());
+        }
+    }
+}
+
+struct Threshold {
+    threshold: u16,                     // The dynamic threshold value
+    target_sample_size: usize,          // Target number of bytes to process before stopping
+    current_sample_size: usize,         // Total bytes processed so far
+    tokens_to_insert: usize,            // Number of tokens needed to fully populate the dictionary 
+    update_period: usize,               // How many token insertions before we update the threshold
+    current_update_merges: usize,       // Number of tokens inserted in the current update batch
+    current_update_bytes: usize,        // Number of bytes processed in the current update batch
+}    
+
+impl Threshold {
+    fn new(target_sample_size: usize, tokens_to_insert: usize, update_period: usize) -> Self {
+        Threshold {
+            threshold: 0,
+            target_sample_size,
+            current_sample_size: 0, 
+            tokens_to_insert,
+            update_period,
+            current_update_merges: 0,
+            current_update_bytes: 0,
+        }
+    }
+
+    #[inline]
+    fn get(&self) -> u16 {
+        self.threshold
+    }
+
+    #[inline]
+    fn update(&mut self, match_length: usize, did_merge: bool) {
+        self.current_update_bytes += match_length;
+        self.current_sample_size += match_length;
+
+        if did_merge {
+            self.tokens_to_insert -= 1;
+            self.current_update_merges += 1;
+
+            if self.current_update_merges == self.update_period {
+                let bytes_per_token = (self.current_update_bytes as f64 / self.current_update_merges as f64).ceil() as usize;
+                let predicted_missing_bytes = self.tokens_to_insert * bytes_per_token;
+                let predicted_sample_size = self.current_sample_size + predicted_missing_bytes;
+
+                if predicted_sample_size > self.target_sample_size {
+                    self.threshold = self.threshold.saturating_sub(1);
+                }
+                else if predicted_sample_size < self.target_sample_size {
+                    self.threshold = self.threshold.saturating_add(1);
+                }
+
+                self.current_update_bytes = 0;
+                self.current_update_merges = 0;
+            }
         }
     }
 }
