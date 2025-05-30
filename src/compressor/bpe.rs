@@ -3,7 +3,6 @@ use crate::bit_vector::BitVector;
 use std::collections::BinaryHeap;
 use rustc_hash::{FxHashMap, FxHashSet};
 
-const MAX_TOKENS: u16 = 65535;
 const FAST_ACCESS_SIZE: usize = 16;
 
 pub struct BPECompressor {
@@ -63,7 +62,7 @@ impl Compressor for BPECompressor {
 
         // Merge pairs
         let mut next_id = 256;
-        while next_id<MAX_TOKENS && !max_freq.is_empty(){
+        while !max_freq.is_empty(){
             let (freq, (t1, t2)) = max_freq.pop().unwrap();
             let current_freq = pair_pos.get(&(t1, t2)).unwrap().len() as u32;
             if freq != current_freq {
@@ -145,6 +144,9 @@ impl Compressor for BPECompressor {
                 max_freq.push((freq, pair));
             }
     
+            if next_id == u16::MAX {
+                break; 
+            }
             next_id += 1;
         }
 

@@ -124,10 +124,6 @@ impl OnPair16Compressor {
             let mut pos = start + previous_length;
     
             while pos < end {
-                if next_token_id == 65535 {
-                    break 'outer;
-                }
-                
                 // Find the longest match
                 let (match_token_id, match_length) = lpm.find_longest_match(&data[pos..end]).unwrap();
 
@@ -146,6 +142,10 @@ impl OnPair16Compressor {
                             frequency.remove(&(previous_token_id, match_token_id));
                             previous_token_id = next_token_id;
                             previous_length = merged_token.len();
+
+                            if next_token_id == u16::MAX {
+                                break 'outer;
+                            }
                             next_token_id += 1;
                         }
                     }

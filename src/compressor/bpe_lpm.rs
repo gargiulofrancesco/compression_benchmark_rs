@@ -6,7 +6,6 @@ use rustc_hash::{FxHashMap, FxHashSet};
 use rand::seq::SliceRandom;
 use rand::thread_rng;
 
-const MAX_TOKENS: u16 = 65535;
 const FAST_ACCESS_SIZE: usize = 16;
 const SAMPLE_SIZE_PERCENTAGE: f32 = 0.05; 
 
@@ -145,7 +144,7 @@ impl BPELPMCompressor {
 
         // Merge pairs
         let mut next_id = 256;
-        while next_id<MAX_TOKENS && !max_freq.is_empty(){
+        while !max_freq.is_empty(){
             let (freq, (t1, t2)) = max_freq.pop().unwrap();
             let current_freq = pair_pos.get(&(t1, t2)).unwrap().len() as u32;
             if freq != current_freq {
@@ -228,6 +227,9 @@ impl BPELPMCompressor {
                 max_freq.push((freq, pair));
             }
     
+            if next_id == u16::MAX {
+                break;
+            }
             next_id += 1;
         }
 
