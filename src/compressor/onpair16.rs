@@ -1,5 +1,6 @@
 use crate::longest_prefix_matcher::lpm16::LongestPrefixMatcher;
 use crate::longest_prefix_matcher::lpm16::StaticLongestPrefixMatcher;
+use crate::threshold::Threshold;
 use super::Compressor;
 use rustc_hash::FxHashMap;
 use rand::seq::SliceRandom;
@@ -19,7 +20,7 @@ impl Compressor for OnPair16Compressor {
         OnPair16Compressor {
             compressed_data: Vec::with_capacity(data_size),
             item_end_positions: Vec::with_capacity(n_elements),
-            dictionary: Vec::with_capacity(2 * (1024 * 1024)), // 2 MB
+            dictionary: Vec::with_capacity(2 * 1024 * 1024), // 2 MiB
             dictionary_end_positions: Vec::with_capacity(1 << 16),
         }
     }
@@ -109,9 +110,9 @@ impl OnPair16Compressor {
 
         // Initialize the adaptive threshold
         let sample_size = (data.len() as f64 * 0.1) as usize; // 10% of the data size
-        let tokens_to_insert = u16::MAX as usize - 255; // 65536 - 256 tokens to insert
-        let update_period = ((1.00 + u16::MAX as f64) * 0.001).ceil() as usize; // 0.1% of the dictionary size
-        let mut threshold = Threshold::new(sample_size, tokens_to_insert, update_period);
+        let tokens_to_insert = 65536 - 256; // 65536 total tokens, 256 already used
+        let update_period: usize = (65536.0 * 0.001 as f64).ceil() as usize; // 0.1% of the dictionary size
+        let mut threshold = Threshold::new(sample_size, tokens_to_insert, update_period);        
 
         // Iterate over entries
         'outer: for &index in shuffled_indices.iter() {
@@ -193,62 +194,6 @@ impl OnPair16Compressor {
             }
     
             self.item_end_positions.push(self.compressed_data.len());
-        }
-    }
-}
-
-struct Threshold {
-    threshold: u16,                     // The dynamic threshold value
-    target_sample_size: usize,          // Target number of bytes to process before stopping
-    current_sample_size: usize,         // Total bytes processed so far
-    tokens_to_insert: usize,            // Number of tokens needed to fully populate the dictionary 
-    update_period: usize,               // How many token insertions before we update the threshold
-    current_update_merges: usize,       // Number of tokens inserted in the current update batch
-    current_update_bytes: usize,        // Number of bytes processed in the current update batch
-}    
-
-impl Threshold {
-    fn new(target_sample_size: usize, tokens_to_insert: usize, update_period: usize) -> Self {
-        Threshold {
-            threshold: 0,
-            target_sample_size,
-            current_sample_size: 0, 
-            tokens_to_insert,
-            update_period,
-            current_update_merges: 0,
-            current_update_bytes: 0,
-        }
-    }
-
-    #[inline]
-    fn get(&self) -> u16 {
-        self.threshold
-    }
-
-    #[inline]
-    fn update(&mut self, match_length: usize, did_merge: bool) {
-        self.current_update_bytes += match_length;
-        self.current_sample_size += match_length;
-
-        if did_merge {
-            self.tokens_to_insert -= 1;
-            self.current_update_merges += 1;
-
-            if self.current_update_merges == self.update_period {
-                let bytes_per_token = (self.current_update_bytes as f64 / self.current_update_merges as f64).ceil() as usize;
-                let predicted_missing_bytes = self.tokens_to_insert * bytes_per_token;
-                let predicted_sample_size = self.current_sample_size + predicted_missing_bytes;
-
-                if predicted_sample_size > self.target_sample_size {
-                    self.threshold = self.threshold.saturating_sub(1);
-                }
-                else if predicted_sample_size < self.target_sample_size {
-                    self.threshold = self.threshold.saturating_add(1);
-                }
-
-                self.current_update_bytes = 0;
-                self.current_update_merges = 0;
-            }
         }
     }
 }
