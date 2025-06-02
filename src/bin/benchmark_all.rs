@@ -4,10 +4,10 @@ use std::fs;
 use std::path::Path;
 use std::process::Command;
 
-const COMPRESSORS: [&str; 5] = ["copy", "zstd", "fsst", "onpair", "onpair16"];
+const COMPRESSORS: [&str; 3] = ["raw", "onpair", "onpair16"];
 const BENCHMARK_PATH: &str = "./benchmark_individual";
 const OUTPUT_FILE: &str = "benchmark_results.json";
-const N_ITERATIONS: usize = 10;
+const N_ITERATIONS: usize = 15;
 
 fn main() {
     // Get the command-line arguments

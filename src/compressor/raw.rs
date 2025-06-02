@@ -1,11 +1,11 @@
 use crate::compressor::Compressor;
 
-pub struct CopyCompressor {
+pub struct RawCompressor {
     compressed_data: Vec<u8>,
     offsets: Vec<usize>,
 }
 
-impl Compressor for CopyCompressor {
+impl Compressor for RawCompressor {
     fn new(data_size: usize, n_elements: usize) -> Self {
         let mut compressed_data = Vec::with_capacity(data_size);
         compressed_data.resize(data_size, 0);
@@ -68,8 +68,8 @@ impl Compressor for CopyCompressor {
         self.compressed_data.len()
     }
     
-    /// Returns the name of this compressor, which is "Copy" in this case.
+    /// Returns the name of this compressor
     fn name(&self) -> &str {
-        "Copy"
+        "Raw"
     }
 }

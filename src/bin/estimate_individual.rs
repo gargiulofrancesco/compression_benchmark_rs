@@ -92,8 +92,7 @@ fn compress_deflate(dataset_name: &str, data: &[u8], compression_level: i32) -> 
         compression_rate,
         compression_speed,
         decompression_speed,
-        random_access_speed: 0.0,
-        average_random_access_time: 0.0
+        average_random_access_time: 0
     }
 }
 
@@ -131,8 +130,7 @@ fn compress_brotli(dataset_name: &str, data: &[u8], compression_level: i32) -> B
         compression_rate,
         compression_speed,
         decompression_speed,
-        random_access_speed: 0.0,
-        average_random_access_time: 0.0
+        average_random_access_time: 0
     }
 }
 
@@ -166,8 +164,7 @@ fn compress_zstd(dataset_name: &str, data: &[u8], compression_level: i32) -> Ben
         compression_rate,
         compression_speed,
         decompression_speed,
-        random_access_speed: 0.0,
-        average_random_access_time: 0.0
+        average_random_access_time: 0
     }
 }
 
@@ -211,8 +208,7 @@ fn compress_lz4(dataset_name: &str, data: &[u8], compression_level: i32) -> Benc
         compression_rate,
         compression_speed,
         decompression_speed,
-        random_access_speed: 0.0,
-        average_random_access_time: 0.0
+        average_random_access_time: 0
     }
 }
 
@@ -248,8 +244,7 @@ fn compress_snappy(dataset_name: &str, data: &[u8]) -> BenchmarkResult {
         compression_rate,
         compression_speed,
         decompression_speed,
-        random_access_speed: 0.0,
-        average_random_access_time: 0.0
+        average_random_access_time: 0
     }
 }
 
@@ -291,7 +286,6 @@ fn compress_xz(dataset_name: &str, data: &[u8], compression_level: i32) -> Bench
         compression_rate,
         compression_speed,
         decompression_speed,
-        random_access_speed: 0.0,
-        average_random_access_time: 0.0
+        average_random_access_time: 0
     }
 }

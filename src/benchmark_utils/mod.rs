@@ -12,10 +12,9 @@ pub struct BenchmarkResult {
     pub dataset_name: String,
     pub compressor_name: String,
     pub compression_rate: f64,
-    pub compression_speed: f64,
-    pub decompression_speed: f64,
-    pub random_access_speed: f64,
-    pub average_random_access_time: f64,
+    pub compression_speed: f64, // in MiB/s
+    pub decompression_speed: f64, // in MiB/s
+    pub average_random_access_time: u128, // in nanoseconds
 }
 
 pub fn process_dataset(path: &Path) -> (Vec<u8>, Vec<usize>) {
@@ -94,8 +93,7 @@ pub fn print_benchmark_results(results: &[BenchmarkResult]) {
         let avg_compression_rate = group.iter().map(|r| r.compression_rate).sum::<f64>() / len;
         let avg_compression_speed = group.iter().map(|r| r.compression_speed).sum::<f64>() / len;
         let avg_decompression_speed = group.iter().map(|r| r.decompression_speed).sum::<f64>() / len;
-        let avg_random_access_speed = group.iter().map(|r| r.random_access_speed).sum::<f64>() / len;
-        let avg_average_random_access_time = group.iter().map(|r| r.average_random_access_time).sum::<f64>() / len;
+        let avg_average_random_access_time = group.iter().map(|r| r.average_random_access_time).sum::<u128>() / group.len() as u128;
 
         // Store the averaged result
         let averaged_result = BenchmarkResult {
@@ -104,7 +102,6 @@ pub fn print_benchmark_results(results: &[BenchmarkResult]) {
             compression_rate: avg_compression_rate,
             compression_speed: avg_compression_speed,
             decompression_speed: avg_decompression_speed,
-            random_access_speed: avg_random_access_speed,
             average_random_access_time: avg_average_random_access_time,
         };
 
@@ -124,11 +121,10 @@ pub fn print_benchmark_results(results: &[BenchmarkResult]) {
         let mut table = Table::new();
         table.add_row(row![
             "Dataset",
-            "Comp Rate",
-            "Comp Speed (MB/s)",
-            "Decomp Speed (MB/s)",
-            "Random Access Speed (MB/s)",
-            "Avg Random Access Time (ns)"
+            "Comp. Rate",
+            "Comp. Speed (MiB/s)",
+            "Decomp. Speed (MiB/s)",
+            "Avg. Random Access Time (ns)"
         ]);
 
         // Add rows for each averaged result
@@ -138,8 +134,7 @@ pub fn print_benchmark_results(results: &[BenchmarkResult]) {
                 format!("{:.3}", result.compression_rate),
                 format!("{:.2}", result.compression_speed),
                 format!("{:.2}", result.decompression_speed),
-                format!("{:.2}", result.random_access_speed),
-                format!("{}", (result.average_random_access_time * 1_000_000_000.0).round() as u64),
+                format!("{}", result.average_random_access_time),
             ]);
         }
 
@@ -151,10 +146,8 @@ pub fn print_benchmark_results(results: &[BenchmarkResult]) {
             sorted_results.iter().map(|r| r.compression_speed).sum::<f64>() / len;
         let overall_avg_decompression_speed =
             sorted_results.iter().map(|r| r.decompression_speed).sum::<f64>() / len;
-        let overall_avg_random_access_speed =
-            sorted_results.iter().map(|r| r.random_access_speed).sum::<f64>() / len;
         let overall_avg_random_access_time =
-            sorted_results.iter().map(|r| r.average_random_access_time).sum::<f64>() / len;
+            sorted_results.iter().map(|r| r.average_random_access_time).sum::<u128>() / sorted_results.len() as u128;
 
         // Add overall averages row
         table.add_row(row![
@@ -162,8 +155,7 @@ pub fn print_benchmark_results(results: &[BenchmarkResult]) {
             format!("{:.3}", overall_avg_compression_rate),
             format!("{:.2}", overall_avg_compression_speed),
             format!("{:.2}", overall_avg_decompression_speed),
-            format!("{:.2}", overall_avg_random_access_speed),
-            format!("{}", (overall_avg_random_access_time * 1_000_000_000.0).round() as u64),
+            format!("{}", overall_avg_random_access_time),
         ]);
 
         // Print the table for this compressor

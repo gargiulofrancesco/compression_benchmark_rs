@@ -2,7 +2,7 @@ use compression_benchmark_rs::benchmark_utils::*;
 use compression_benchmark_rs::compressor::bpe::BPECompressor;
 use compression_benchmark_rs::compressor::bpe_lpm::BPELPMCompressor;
 use compression_benchmark_rs::compressor::Compressor;
-use compression_benchmark_rs::compressor::copy::CopyCompressor;
+use compression_benchmark_rs::compressor::raw::RawCompressor;
 use compression_benchmark_rs::compressor::lz4::LZ4Compressor;
 use compression_benchmark_rs::compressor::snappy::SnappyCompressor;
 use compression_benchmark_rs::compressor::zstd::ZstdCompressor;
@@ -15,7 +15,7 @@ const DEFAULT_CORE_ID: usize = 0;
 const N_QUERIES: usize = 1000000;
 
 enum CompressorEnum {
-    Copy(CopyCompressor),
+    Raw(RawCompressor),
     LZ4(LZ4Compressor),
     Snappy(SnappyCompressor),
     Zstd(ZstdCompressor),
@@ -64,7 +64,7 @@ fn main() {
 
     // Initialize the compressor
     let mut compressor = match compressor_name.as_str() {
-        "copy" => CompressorEnum::Copy(CopyCompressor::new(data.len(), end_positions.len()-1)),
+        "raw" => CompressorEnum::Raw(RawCompressor::new(data.len(), end_positions.len()-1)),
         "lz4" => CompressorEnum::LZ4(LZ4Compressor::new(data.len(), end_positions.len()-1)),
         "snappy" => CompressorEnum::Snappy(SnappyCompressor::new(data.len(), end_positions.len()-1)),
         "zstd" => CompressorEnum::Zstd(ZstdCompressor::new(data.len(), end_positions.len()-1)),
@@ -79,7 +79,7 @@ fn main() {
     };
 
     let result = match compressor {
-        CompressorEnum::Copy(ref mut c) => benchmark(c, dataset_name, &data, &end_positions, &queries),
+        CompressorEnum::Raw(ref mut c) => benchmark(c, dataset_name, &data, &end_positions, &queries),
         CompressorEnum::LZ4(ref mut c) => benchmark(c, dataset_name, &data, &end_positions, &queries),
         CompressorEnum::Snappy(ref mut c) => benchmark(c, dataset_name, &data, &end_positions, &queries),
         CompressorEnum::Zstd(ref mut c) => benchmark(c, dataset_name, &data, &end_positions, &queries),
@@ -102,9 +102,7 @@ fn benchmark<T: Compressor>(
 ) -> BenchmarkResult {
     let mut buffer: Vec<u8> = Vec::with_capacity(data.len() + 1024);
     buffer.resize(data.len() + 1024, 0);
-
     let data_bytes = data.len() as f64;
-    let random_access_bytes: usize = queries.iter().map(|&i| { end_positions[i+1] - end_positions[i] }).sum();    
 
     // Compression
     let start_compression = Instant::now();
@@ -125,7 +123,7 @@ fn benchmark<T: Compressor>(
     }
 
     // Random Access
-    let mut random_access_times = Vec::new();
+    let mut random_access_times: Vec<u128> = Vec::new();
     for &query in queries {
         let start_position = end_positions[query];
         let end_position = end_positions[query+1];
@@ -133,7 +131,7 @@ fn benchmark<T: Compressor>(
 
         let start_random_access = Instant::now();
         compressor.get_item_at(query, &mut buffer);  // Access the item at index query
-        let random_access_time = start_random_access.elapsed().as_secs_f64();
+        let random_access_time = start_random_access.elapsed().as_nanos();
         random_access_times.push(random_access_time);
 
         // Validate random access data
@@ -142,8 +140,7 @@ fn benchmark<T: Compressor>(
         }
     }
     
-    let random_access_speed = (random_access_bytes as f64 / (1024.0 * 1024.0)) / random_access_times.iter().sum::<f64>();
-    let average_random_access_time: f64 = random_access_times.iter().sum::<f64>() / random_access_times.len() as f64;
+    let average_random_access_time = random_access_times.iter().sum::<u128>() / random_access_times.len() as u128;
 
     BenchmarkResult {
         dataset_name: dataset_name,
@@ -151,7 +148,6 @@ fn benchmark<T: Compressor>(
         compression_rate,
         compression_speed,
         decompression_speed,
-        random_access_speed,
         average_random_access_time
     }
 }

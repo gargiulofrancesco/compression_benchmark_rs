@@ -1,4 +1,4 @@
-pub mod copy;
+pub mod raw;
 pub mod lz4;
 pub mod snappy;
 pub mod zstd;
