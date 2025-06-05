@@ -11,7 +11,7 @@ pub struct Threshold {
 impl Threshold {
     pub fn new(target_sample_size: usize, tokens_to_insert: usize, update_period: usize) -> Self {
         Threshold {
-            threshold: 0,
+            threshold: 1,
             target_sample_size,
             current_sample_size: 0, 
             tokens_to_insert,
@@ -41,7 +41,7 @@ impl Threshold {
                 let predicted_sample_size = self.current_sample_size + predicted_missing_bytes;
 
                 if predicted_sample_size > self.target_sample_size {
-                    self.threshold = self.threshold.saturating_sub(1);
+                    self.threshold = self.threshold.saturating_sub(1).max(1);
                 }
                 else if predicted_sample_size < self.target_sample_size {
                     self.threshold = if self.threshold < u16::MAX - 1 { self.threshold + 1 } else { u16::MAX - 1 };
