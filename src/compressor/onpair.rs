@@ -1,10 +1,10 @@
 use crate::longest_prefix_matcher::lpm::LongestPrefixMatcher;
-use crate::threshold::Threshold;
 use super::Compressor;
 use rustc_hash::FxHashMap;
 use rand::seq::SliceRandom;
 use rand::thread_rng;
 
+const THRESHOLD: usize = 10; 
 const FAST_ACCESS_SIZE: usize = 16;
 
 pub struct OnPairCompressor {
@@ -115,12 +115,6 @@ impl OnPairCompressor {
         // Shuffle entries
         let mut shuffled_indices: Vec<usize> = (0..end_positions.len()-1).collect();
         shuffled_indices.shuffle(&mut thread_rng());
-
-        // Initialize the adaptive threshold
-        let sample_size = (data.len() as f64 * 0.1) as usize; // 10% of the data size
-        let tokens_to_insert = 65536 - 256; // 65536 total tokens, 256 already used
-        let update_period: usize = (65536.0 * 0.001 as f64).ceil() as usize; // 0.1% of the dictionary size
-        let mut threshold = Threshold::new(sample_size, tokens_to_insert, update_period);
         
         // Iterate over entries
         'outer: for &index in shuffled_indices.iter() {
@@ -136,7 +130,6 @@ impl OnPairCompressor {
             let mut previous_length = match_length;
 
             let mut pos = start + previous_length;
-            threshold.update(match_length, false);
     
             while pos < end {
                 // Find the longest match
@@ -145,7 +138,7 @@ impl OnPairCompressor {
                  // Update token frequency and possibly merge tokens
                 *frequency.entry((previous_token_id, match_token_id)).or_insert(0) += 1;
     
-                if frequency[&(previous_token_id, match_token_id)] > threshold.get() {
+                if frequency[&(previous_token_id, match_token_id)] >= THRESHOLD {
                     let merged_token = &data[pos - previous_length..pos + match_length];
                     lpm.insert(merged_token, next_token_id);
                     self.dictionary.extend(merged_token);
@@ -160,12 +153,10 @@ impl OnPairCompressor {
                     }
 
                     next_token_id += 1;
-                    threshold.update(match_length, true);
                 }
                 else {
                     previous_token_id = match_token_id;
                     previous_length = match_length;
-                    threshold.update(match_length, false);
                 }
             
                 pos += match_length;
