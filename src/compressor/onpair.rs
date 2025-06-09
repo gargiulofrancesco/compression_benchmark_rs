@@ -4,7 +4,7 @@ use rustc_hash::FxHashMap;
 use rand::seq::SliceRandom;
 use rand::thread_rng;
 
-const THRESHOLD: usize = 10; 
+const THRESHOLD: u16 = 10; 
 const FAST_ACCESS_SIZE: usize = 16;
 
 pub struct OnPairCompressor {
