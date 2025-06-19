@@ -1,6 +1,6 @@
 use compression_benchmark_rs::benchmark_utils::*;
 use compression_benchmark_rs::compressor::bpe::BPECompressor;
-use compression_benchmark_rs::compressor::bpe_lpm::BPELPMCompressor;
+use compression_benchmark_rs::compressor::sampled_bpe::SampledBPECompressor;
 use compression_benchmark_rs::compressor::Compressor;
 use compression_benchmark_rs::compressor::raw::RawCompressor;
 use compression_benchmark_rs::compressor::lz4::LZ4Compressor;
@@ -20,7 +20,7 @@ enum CompressorEnum {
     Snappy(SnappyCompressor),
     Zstd(ZstdCompressor),
     BPE(BPECompressor),
-    BPELPM(BPELPMCompressor),
+    SampledBPE(SampledBPECompressor),
     OnPair(OnPairCompressor), 
     OnPair16(OnPair16Compressor),
 }
@@ -69,7 +69,7 @@ fn main() {
         "snappy" => CompressorEnum::Snappy(SnappyCompressor::new(data.len(), end_positions.len()-1)),
         "zstd" => CompressorEnum::Zstd(ZstdCompressor::new(data.len(), end_positions.len()-1)),
         "bpe" => CompressorEnum::BPE(BPECompressor::new(data.len(), end_positions.len()-1)),
-        "bpe_lpm" => CompressorEnum::BPELPM(BPELPMCompressor::new(data.len(), end_positions.len()-1)),
+        "sampled_bpe" => CompressorEnum::SampledBPE(SampledBPECompressor::new(data.len(), end_positions.len()-1)),
         "onpair" => CompressorEnum::OnPair(OnPairCompressor::new(data.len(), end_positions.len()-1)),
         "onpair16" => CompressorEnum::OnPair16(OnPair16Compressor::new(data.len(), end_positions.len()-1)),
         _ => {
@@ -84,7 +84,7 @@ fn main() {
         CompressorEnum::Snappy(ref mut c) => benchmark(c, dataset_name, &data, &end_positions, &queries),
         CompressorEnum::Zstd(ref mut c) => benchmark(c, dataset_name, &data, &end_positions, &queries),
         CompressorEnum::BPE(ref mut c) => benchmark(c, dataset_name, &data, &end_positions, &queries),
-        CompressorEnum::BPELPM(ref mut c) => benchmark(c, dataset_name, &data, &end_positions, &queries),
+        CompressorEnum::SampledBPE(ref mut c) => benchmark(c, dataset_name, &data, &end_positions, &queries),
         CompressorEnum::OnPair(ref mut c) => benchmark(c, dataset_name, &data, &end_positions, &queries),
         CompressorEnum::OnPair16(ref mut c) => benchmark(c, dataset_name, &data, &end_positions, &queries),
     };

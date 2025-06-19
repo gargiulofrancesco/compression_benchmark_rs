@@ -5,6 +5,8 @@ use rustc_hash::{FxHashMap, FxHashSet};
 
 const FAST_ACCESS_SIZE: usize = 16;
 
+type Pair = (u16, u16);
+
 pub struct BPECompressor {
     compressed_data: Vec<u16>,                  // Store the compressed data as bytes
     item_end_positions: Vec<usize>,             // Store the end positions of each compressed item
@@ -34,14 +36,14 @@ impl Compressor for BPECompressor {
         // Initialize Token IDs
         let mut token_ids: Vec<u16> = data.iter().map(|&b| b as u16).collect();
 
-        // The bitvector inidicates with zeroes the positions of merged bytes
+        // A bitvector indicates with zeroes the positions of merged bytes.
         let mut bv = BitVector::with_ones(data.len());
 
-        // Strings end positions are used to avoid merging pairs that cross multiple strings
+        // Strings end positions are used to avoid merging pairs across different strings
         let end_positions_set: FxHashSet<usize> = end_positions.iter().skip(1).copied().collect();
 
         // Initialize pair positions  
-        let mut pair_pos: FxHashMap<(u16, u16), FxHashSet<u32>> = FxHashMap::default();
+        let mut pair_pos: FxHashMap<Pair, FxHashSet<u32>> = FxHashMap::default();
         for i in 0..data.len()-1 {
             if end_positions_set.contains(&(i+1)) {
                 continue;
@@ -55,80 +57,95 @@ impl Compressor for BPECompressor {
         }
 
         // Initialize heap tracking the most frequent pairs
-        let mut max_freq: BinaryHeap<(u32, (u16, u16))> = BinaryHeap::new();
+        let mut top_pairs: BinaryHeap<(u32, Pair)> = BinaryHeap::new();
         for (pair, pos_set) in pair_pos.iter() {
-            max_freq.push((pos_set.len() as u32, *pair));
+            top_pairs.push((pos_set.len() as u32, *pair));
         }
 
         // Merge pairs
         let mut next_id = 256;
-        while !max_freq.is_empty(){
-            let (freq, (t1, t2)) = max_freq.pop().unwrap();
-            let current_freq = pair_pos.get(&(t1, t2)).unwrap().len() as u32;
+        while !top_pairs.is_empty(){
+            // Get the most frequent pair
+            let (freq, top_pair) = top_pairs.pop().unwrap();
+            let current_freq = pair_pos[&top_pair].len() as u32;
+            
+            // Check if the frequency is up-to-date
             if freq != current_freq {
-                continue; // Skip if the frequency is not up-to-date
+                top_pairs.push((current_freq, top_pair));
+                continue; 
             }
 
-            // Get the positions of the pair (t1, t2)
-            let mut positions= pair_pos.remove(&(t1, t2)).unwrap().into_iter().collect::<Vec<u32>>();
+            // Stop if the most frequent pair has frequency 0
+            if current_freq == 0 {
+                break;
+            }
+
+            // Get the positions of the top pair
+            let mut positions= pair_pos.remove(&top_pair).unwrap().into_iter().collect::<Vec<u32>>();
             positions.sort();
 
+            // Let t1 and t2 be the tokens to merge
+            let (t1, t2) = top_pair;
+
             // Add the new token to the dictionary
-            let t1_start = self.dictionary_end_positions[t1 as usize] as usize;
-            let t1_end = self.dictionary_end_positions[t1 as usize + 1] as usize;
-            let t2_start = self.dictionary_end_positions[t2 as usize] as usize;
-            let t2_end = self.dictionary_end_positions[t2 as usize + 1] as usize;
-            let t1_data = self.dictionary[t1_start..t1_end].to_vec();
-            let t2_data = self.dictionary[t2_start..t2_end].to_vec();
+            let t1_data = self.dictionary[
+                self.dictionary_end_positions[t1 as usize] as usize
+                ..
+                self.dictionary_end_positions[t1 as usize + 1] as usize
+            ].to_vec();
+            let t2_data = self.dictionary[
+                self.dictionary_end_positions[t2 as usize] as usize
+                ..
+                self.dictionary_end_positions[t2 as usize + 1] as usize
+            ].to_vec();
             self.dictionary.extend(&t1_data);
             self.dictionary.extend(&t2_data);
             self.dictionary_end_positions.push(self.dictionary.len() as u32);
 
-            // Store updated pairs to minimize insertions in the max_freq heap
-            let mut updated_pairs: FxHashSet<(u16, u16)> = FxHashSet::default();
+            // Keep track of new pairs that will form after merging
+            let mut new_pairs: FxHashSet<Pair> = FxHashSet::default();
 
-            // Update occurrences of (t1, t2)
+            // Update occurrences of the top pair
             for &position in positions.iter() {
                 // If position was already merged, skip
                 if !bv.get(position as usize).unwrap() {
                     continue;
                 }
-                
+
+                // We indicate with t0 and t3 the tokens before and after the top pair
                 let t1_pos = position as usize;
                 let t2_pos = bv.next_one(t1_pos).unwrap();
-                let t0_pos = bv.prev_one(t1_pos);
-                let t3_pos = bv.next_one(t2_pos);
+                let t0_pos = bv.prev_one(t1_pos); // t0_pos is None if t1 is the first token
+                let t3_pos = bv.next_one(t2_pos); // t3_pos is None if t2 is the last token
 
                 // Update (t0, t1) and (t0, next_id)  
                 if t0_pos.is_some() && !end_positions_set.contains(&t1_pos) {
                     let t0 = token_ids[t0_pos.unwrap()];
                     // Update (t0, t1)
-                    if (t0, t1) != (t1, t2) {
+                    if (t0, t1) != top_pair {
                         pair_pos.get_mut(&(t0, t1)).unwrap().remove(&(t0_pos.unwrap() as u32));
-                        updated_pairs.insert((t0, t1));
                     }
                     // Update (t0, next_id)
+                    new_pairs.insert((t0, next_id));
                     pair_pos
                             .entry((t0, next_id))
                             .or_insert(FxHashSet::default())
                             .insert(t0_pos.unwrap() as u32);
-                    updated_pairs.insert((t0, next_id));
                 }
 
                 // Update (t2, t3) and (next_id, t3)
                 if t3_pos.is_some() && !end_positions_set.contains(&t3_pos.unwrap()){
                     let t3 = token_ids[t3_pos.unwrap()];
                     // Update (t2, t3)
-                    if (t2, t3) != (t1, t2) {
+                    if (t2, t3) != top_pair {
                         pair_pos.get_mut(&(t2, t3)).unwrap().remove(&(t2_pos as u32));
-                        updated_pairs.insert((t2, t3));
                     }
                     // Update (next_id, t3)
+                    new_pairs.insert((next_id, t3));
                     pair_pos
                             .entry((next_id, t3))
                             .or_insert(FxHashSet::default())
                             .insert(t1_pos as u32);
-                    updated_pairs.insert((next_id, t3));
                 }
     
                 // set t2_pos to 0 to merge t1 and t2
@@ -137,16 +154,21 @@ impl Compressor for BPECompressor {
                 // Update the token_ids
                 token_ids[t1_pos] = next_id;
             }
-    
-            // Update the max_freq heap with updated pairs
-            for &pair in updated_pairs.iter() {
-                let freq = pair_pos.get(&pair).unwrap().len() as u32;
-                max_freq.push((freq, pair));
+
+            // Update the top_pairs heap with new pairs.
+            // We don't need to update old pairs because they are already in the heap and their frequency can only decrease; 
+            // the check at the beginning of the merge loop ensures we operate with up-to-date frequencies.
+            for &new_pair in new_pairs.iter() {
+                let freq = pair_pos[&new_pair].len() as u32;
+                top_pairs.push((freq, new_pair));
             }
     
+            // If the dictionary is full, stop merging
             if next_id == u16::MAX {
                 break; 
             }
+
+            // Update the next token ID
             next_id += 1;
         }
 

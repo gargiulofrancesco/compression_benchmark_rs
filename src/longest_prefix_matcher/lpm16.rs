@@ -81,7 +81,7 @@ impl LongestPrefixMatcher{
             }
         }
 
-        unreachable!("A match is guaranteed to be found before this is reached.");
+        None
     }
 
     pub fn finalize(&self) -> StaticLongestPrefixMatcher {
@@ -215,7 +215,7 @@ impl StaticLongestPrefixMatcher{
             }
         }
 
-        unreachable!("A match is guaranteed to be found before this is reached.");
+        None
     }
 
     #[inline]
