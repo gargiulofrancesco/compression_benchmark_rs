@@ -6,6 +6,7 @@ pub mod bpe;
 pub mod sampled_bpe;
 pub mod onpair;
 pub mod onpair16;
+pub mod onpair_bv;
 
 pub trait Compressor {
     /// Creates a new compressor allocating memory for the specified data size and number of elements.

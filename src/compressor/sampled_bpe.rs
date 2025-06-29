@@ -103,7 +103,7 @@ impl Compressor for SampledBPECompressor {
 }
 
 impl SampledBPECompressor {
-    fn train(&mut self, data: &[u8], end_positions: &[usize]) -> LongestPrefixMatcher {
+    fn train(&mut self, data: &[u8], end_positions: &[usize]) -> LongestPrefixMatcher<u16> {
         let mut lpm = LongestPrefixMatcher::new();
 
         // Initialize the dictionary with single-byte tokens
@@ -258,7 +258,7 @@ impl SampledBPECompressor {
         lpm
     }
 
-    fn parse(&mut self, data: &[u8], end_positions: &[usize], lpm: &LongestPrefixMatcher) {
+    fn parse(&mut self, data: &[u8], end_positions: &[usize], lpm: &LongestPrefixMatcher<u16>) {
         self.item_end_positions.push(0);
 
         for window in end_positions.windows(2) {

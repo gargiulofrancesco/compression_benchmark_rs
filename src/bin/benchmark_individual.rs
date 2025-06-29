@@ -1,6 +1,7 @@
 use compression_benchmark_rs::benchmark_utils::*;
 use compression_benchmark_rs::compressor::bpe::BPECompressor;
 use compression_benchmark_rs::compressor::sampled_bpe::SampledBPECompressor;
+use compression_benchmark_rs::compressor::onpair_bv::OnPairBVCompressor;
 use compression_benchmark_rs::compressor::Compressor;
 use compression_benchmark_rs::compressor::raw::RawCompressor;
 use compression_benchmark_rs::compressor::lz4::LZ4Compressor;
@@ -23,6 +24,7 @@ enum CompressorEnum {
     SampledBPE(SampledBPECompressor),
     OnPair(OnPairCompressor), 
     OnPair16(OnPair16Compressor),
+    OnPairBV(OnPairBVCompressor),
 }
 
 fn main() {
@@ -72,6 +74,7 @@ fn main() {
         "sampled_bpe" => CompressorEnum::SampledBPE(SampledBPECompressor::new(data.len(), end_positions.len()-1)),
         "onpair" => CompressorEnum::OnPair(OnPairCompressor::new(data.len(), end_positions.len()-1)),
         "onpair16" => CompressorEnum::OnPair16(OnPair16Compressor::new(data.len(), end_positions.len()-1)),
+        "onpair_bv" => CompressorEnum::OnPairBV(OnPairBVCompressor::new(data.len(), end_positions.len()-1)),
         _ => {
             eprintln!("Unknown compressor: {}", compressor_name);
             std::process::exit(1);
@@ -87,6 +90,7 @@ fn main() {
         CompressorEnum::SampledBPE(ref mut c) => benchmark(c, dataset_name, &data, &end_positions, &queries),
         CompressorEnum::OnPair(ref mut c) => benchmark(c, dataset_name, &data, &end_positions, &queries),
         CompressorEnum::OnPair16(ref mut c) => benchmark(c, dataset_name, &data, &end_positions, &queries),
+        CompressorEnum::OnPairBV(ref mut c) => benchmark(c, dataset_name, &data, &end_positions, &queries),
     };
 
     // Append the result to the file

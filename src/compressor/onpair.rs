@@ -4,7 +4,6 @@ use rustc_hash::FxHashMap;
 use rand::seq::SliceRandom;
 use rand::thread_rng;
 
-const THRESHOLD: u16 = 10; 
 const FAST_ACCESS_SIZE: usize = 16;
 
 pub struct OnPairCompressor {
@@ -97,7 +96,7 @@ impl Compressor for OnPairCompressor {
 }
 
 impl OnPairCompressor {
-    fn train(&mut self, data: &[u8], end_positions: &[usize]) -> LongestPrefixMatcher {
+    fn train(&mut self, data: &[u8], end_positions: &[usize]) -> LongestPrefixMatcher<u16> {
         self.dictionary_end_positions.push(0);
         
         let mut frequency: FxHashMap<(u16, u16), u16> = FxHashMap::default();
@@ -115,6 +114,10 @@ impl OnPairCompressor {
         // Shuffle entries
         let mut shuffled_indices: Vec<usize> = (0..end_positions.len()-1).collect();
         shuffled_indices.shuffle(&mut thread_rng());
+
+        // Set the threshold for merging tokens
+        let data_size_mib = data.len() as f64 / (1024.0 * 1024.0);
+        let threshold = data_size_mib.log2().max(2.0) as u16;
         
         // Iterate over entries
         'outer: for &index in shuffled_indices.iter() {
@@ -138,7 +141,7 @@ impl OnPairCompressor {
                  // Update token frequency and possibly merge tokens
                 *frequency.entry((previous_token_id, match_token_id)).or_insert(0) += 1;
     
-                if frequency[&(previous_token_id, match_token_id)] >= THRESHOLD {
+                if frequency[&(previous_token_id, match_token_id)] >= threshold {
                     let merged_token = &data[pos - previous_length..pos + match_length];
                     lpm.insert(merged_token, next_token_id);
                     self.dictionary.extend(merged_token);
@@ -166,7 +169,7 @@ impl OnPairCompressor {
         lpm
     }
     
-    fn parse(&mut self, data: &[u8], end_positions: &[usize], lpm: &LongestPrefixMatcher) {
+    fn parse(&mut self, data: &[u8], end_positions: &[usize], lpm: &LongestPrefixMatcher<u16>) {
         self.item_end_positions.push(0);
 
         for window in end_positions.windows(2) {
