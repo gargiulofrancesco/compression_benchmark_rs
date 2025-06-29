@@ -100,7 +100,7 @@ impl Compressor for OnPairBVCompressor {
     }
 
     fn name(&self) -> &str {
-        "OnPair_BV"
+        "OnPair BV"
     }
 }
 

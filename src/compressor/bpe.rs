@@ -36,7 +36,7 @@ impl Compressor for BPECompressor {
         // Initialize Token IDs
         let mut token_ids: Vec<u16> = data.iter().map(|&b| b as u16).collect();
 
-        // A bitvector indicates with zeroes the positions of merged bytes.
+        // A bitvector indicates with zeroes the positions of merged bytes
         let mut bv = BitVector::with_ones(data.len());
 
         // Strings end positions are used to avoid merging pairs across different strings
@@ -151,7 +151,7 @@ impl Compressor for BPECompressor {
                 // set t2_pos to 0 to merge t1 and t2
                 bv.set(t2_pos as usize, false);
     
-                // Update the token_ids
+                // Update token_ids
                 token_ids[t1_pos] = next_id;
             }
 
@@ -168,7 +168,6 @@ impl Compressor for BPECompressor {
                 break; 
             }
 
-            // Update the next token ID
             next_id += 1;
         }
 
