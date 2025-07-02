@@ -173,9 +173,8 @@ impl SampledBPE16Compressor {
                 ..
                 self.dictionary_end_positions[t2 as usize + 1] as usize
             ]);
-            // If insertions failed, skip this pair
             if !lpm.insert(&merged_token, next_id){
-                continue;
+                continue; // If insertion failed, skip this pair
             }
             self.dictionary.extend(&merged_token);
             self.dictionary_end_positions.push(self.dictionary.len() as u32);
