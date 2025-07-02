@@ -1,7 +1,7 @@
 use crate::bit_vector::BitVector;
 use crate::longest_prefix_matcher::lpm::LongestPrefixMatcher;
 use super::Compressor;
-use rustc_hash::{FxHashMap, FxHashSet};
+use rustc_hash::FxHashMap;
 use rand::seq::SliceRandom;
 use rand::thread_rng;
 
