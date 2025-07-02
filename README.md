@@ -2,9 +2,7 @@
 
 This benchmark evaluates the random access performance of various compression algorithms for sequences of strings.
 
-## Contents
-
-### How to Run
+## How to Run
 
 1. Clone the repository:
    ```bash
@@ -26,7 +24,7 @@ This benchmark evaluates the random access performance of various compression al
 
    This command runs the benchmark defined in `benchmark_all.rs`, compressing and querying the dataset files in `<input_directory>`, and outputs a performance comparison of the implemented algorithms.
 
-### Dataset Format
+## Dataset Format
 
 Each dataset file should be a JSON object representing a flat list of strings:
 
