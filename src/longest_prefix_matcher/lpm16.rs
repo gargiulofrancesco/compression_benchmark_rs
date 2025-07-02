@@ -16,12 +16,12 @@ const MASKS: [u64; 9] = [
     0xFFFFFFFFFFFFFFFF, // 8 bytes
 ];
 
-pub struct LongestPrefixMatcher {
+pub struct LongestPrefixMatcher16 {
     dictionary: FxHashMap<(u64, u8), u16>, 
     buckets: FxHashMap<u64, Vec<(u64, u8, u16)>>, 
 }
 
-impl LongestPrefixMatcher{   
+impl LongestPrefixMatcher16{   
     pub fn new() -> Self {
         Self {
             dictionary: FxHashMap::default(),
@@ -84,7 +84,7 @@ impl LongestPrefixMatcher{
         None
     }
 
-    pub fn finalize(&self) -> StaticLongestPrefixMatcher {
+    pub fn finalize(&self) -> StaticLongestPrefixMatcher16 {
         let mut long_dictionary = FxHashMap::default();
         let mut long_buckets = Vec::new();
         
@@ -162,7 +162,7 @@ impl LongestPrefixMatcher{
             long_info[index] = p;
         }
 
-        StaticLongestPrefixMatcher {
+        StaticLongestPrefixMatcher16 {
             short_dictionary,
             long_phf,
             long_info,
@@ -184,14 +184,14 @@ struct LongMatchInfo{
     pub answer_length: u8,
 }
 
-pub struct StaticLongestPrefixMatcher{
+pub struct StaticLongestPrefixMatcher16{
     short_dictionary: FxHashMap<(u64, u8), u16>,
     long_phf: PtrHash<u64, Linear>,
     long_info: Vec<LongMatchInfo>,
     long_buckets: Vec<(u64, u8, u16)>,
 }
 
-impl StaticLongestPrefixMatcher{
+impl StaticLongestPrefixMatcher16{
     #[inline]
     pub fn find_longest_match(&self, data: &[u8]) -> Option<(u16, usize)> {
         // Long match handling

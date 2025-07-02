@@ -1,5 +1,5 @@
-use crate::longest_prefix_matcher::lpm16::LongestPrefixMatcher;
-use crate::longest_prefix_matcher::lpm16::StaticLongestPrefixMatcher;
+use crate::longest_prefix_matcher::lpm16::LongestPrefixMatcher16;
+use crate::longest_prefix_matcher::lpm16::StaticLongestPrefixMatcher16;
 use super::Compressor;
 use rustc_hash::FxHashMap;
 use rand::seq::SliceRandom;
@@ -88,11 +88,11 @@ impl Compressor for OnPair16Compressor {
 }
 
 impl OnPair16Compressor {
-    fn train(&mut self, data: &[u8], end_positions: &[usize]) -> LongestPrefixMatcher {
+    fn train(&mut self, data: &[u8], end_positions: &[usize]) -> LongestPrefixMatcher16 {
         self.dictionary_end_positions.push(0);
 
         let mut frequency: FxHashMap<(u16, u16), u16> = FxHashMap::default();
-        let mut lpm = LongestPrefixMatcher::new();
+        let mut lpm = LongestPrefixMatcher16::new();
         let mut next_token_id = 256;
     
         // Initialize the dictionary with single-byte tokens
@@ -167,7 +167,7 @@ impl OnPair16Compressor {
         lpm
     }
     
-    fn parse(&mut self, data: &[u8], end_positions: &[usize], lpm: &StaticLongestPrefixMatcher) {
+    fn parse(&mut self, data: &[u8], end_positions: &[usize], lpm: &StaticLongestPrefixMatcher16) {
         self.item_end_positions.push(0);
     
         for window in end_positions.windows(2) {

@@ -1,6 +1,6 @@
 use super::Compressor;
-use crate::longest_prefix_matcher::lpm16::LongestPrefixMatcher;
-use crate::longest_prefix_matcher::lpm16::StaticLongestPrefixMatcher;
+use crate::longest_prefix_matcher::lpm16::LongestPrefixMatcher16;
+use crate::longest_prefix_matcher::lpm16::StaticLongestPrefixMatcher16;
 use crate::bit_vector::BitVector;
 use std::collections::BinaryHeap;
 use rustc_hash::{FxHashMap, FxHashSet};
@@ -95,8 +95,8 @@ impl Compressor for SampledBPE16Compressor {
 }
 
 impl SampledBPE16Compressor {
-    fn train(&mut self, data: &[u8], end_positions: &[usize]) -> LongestPrefixMatcher {
-        let mut lpm = LongestPrefixMatcher::new();
+    fn train(&mut self, data: &[u8], end_positions: &[usize]) -> LongestPrefixMatcher16 {
+        let mut lpm = LongestPrefixMatcher16::new();
 
         // Initialize the dictionary with single-byte tokens
         self.dictionary_end_positions.push(0);
@@ -262,7 +262,7 @@ impl SampledBPE16Compressor {
         lpm
     }
 
-    fn parse(&mut self, data: &[u8], end_positions: &[usize], lpm: &StaticLongestPrefixMatcher) {
+    fn parse(&mut self, data: &[u8], end_positions: &[usize], lpm: &StaticLongestPrefixMatcher16) {
         self.item_end_positions.push(0);
 
         for window in end_positions.windows(2) {
