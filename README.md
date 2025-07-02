@@ -18,59 +18,22 @@ This benchmark evaluates the random access performance of various compression al
    cd target/release
    ```
 
-3. Execute the desired benchmark or test executable as described in the **Executables** section.
+3. Execute the benchmark:
+   ```bash
+   ./benchmark_all <input_directory>
+   ```
+   Replace `<input_directory>` with the path to the folder containing your dataset files.
 
-### Executables
-
-1. **`benchmark_individual.rs`**
-   - **Purpose**: Measures the performance of a single compression algorithm on a specified file.
-   - **Usage**:
-     ```bash
-     ./benchmark_individual <algorithm> <input_file>
-     ```
-     - `<algorithm>`: The name of the compression algorithm to benchmark (e.g., `zstd`).
-     - `<input_file>`: Path to the file you want to compress and analyze.
-
-     Example:
-     ```bash
-     ./benchmark_individual zstd dataset.json
-     ```
-     This command benchmarks the `zstd` algorithm on the dataset file `dataset.json`.
-
-2. **`benchmark_all.rs`**
-   - **Purpose**: Compares the performance of multiple compression algorithms across datasets in a folder.
-   - **Usage**:
-     ```bash
-     ./benchmark_all <input_directory>
-     ```
-     - `<input_directory>`: Path to the folder containing datasets for benchmarking.
-
-     Example:
-     ```bash
-     ./benchmark_all ./datasets/
-     ```
-     This command benchmarks several compression algorithms on the dataset files contained in `./datasets/` and provides a performance comparison.
+   This command runs the benchmark defined in `benchmark_all.rs`, compressing and querying the dataset files in `<input_directory>`, and outputs a performance comparison of the implemented algorithms.
 
 ### Dataset Format
 
-A dataset file is a JSON object with the following fields:
-
-- `dataset_name` (`String`): The name or identifier for the dataset.
-- `data` (`Vec<String>`): A list of data entries, where each entry is a string.
-- `queries` (`Vec<usize>`): A list of indices (zero-based) referring to elements in the data field.
-
-Example JSON:
+Each dataset file should be a JSON object representing a flat list of strings:
 
 ```json
-{
-  "dataset_name": "Example Dataset",
-  "data": ["entry1", "entry2", "entry3"],
-  "queries": [0, 2]
-}
+[
+   "entry1",
+   "entry2",
+   "entry3"
+]
 ```
-
-In this example:
-
-- The dataset is named `"Example Dataset"`.
-- The `data` field contains three entries: `"entry1"`, `"entry2"`, and `"entry3"`.
-- The `queries` field references the first (`entry1`) and third (`entry3`) data entries.
