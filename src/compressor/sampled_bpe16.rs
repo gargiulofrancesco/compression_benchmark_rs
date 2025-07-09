@@ -185,7 +185,7 @@ impl SampledBPE16Compressor {
             // Update occurrences of the top pair
             for &position in positions.iter() {
                 // If position was already merged, skip
-                if !bv.get(position as usize).unwrap() {
+                if unsafe { !bv.get_unchecked(position as usize) } {
                     continue;
                 }
 

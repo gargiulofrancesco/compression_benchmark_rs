@@ -71,7 +71,7 @@ impl BitVector {
         self.position += 1;
     }
 
-    #[inline]
+    #[inline(always)]
     pub fn get(&self, index: usize) -> Option<bool> {
         if index >= self.position {
             return None;
@@ -79,6 +79,15 @@ impl BitVector {
         let word = index >> 6;
         let pos_in_word = index & 63;
         Some(self.data[word] >> pos_in_word & 1_u64 == 1)
+    }
+
+    #[inline(always)]
+    pub unsafe fn get_unchecked(&self, index: usize) -> bool {
+        debug_assert!(index < self.position);
+
+        let word = index >> 6;
+        let pos_in_word = index & 63;
+        (*self.data.get_unchecked(word) >> pos_in_word & 1_u64) == 1
     }
 
     /// Sets the to ```bit``` the given position ```index```.
@@ -120,17 +129,33 @@ impl BitVector {
         }
         let block = index >> 6;
         let shift = index & 63;
-
-        let mask = if len == 64 {
-            std::u64::MAX
-        } else {
-            (1_u64 << len) - 1
-        };
+        let mask = u64::MAX >> (64 - len);
 
         if shift + len <= 64 {
-            return Some(self.data[block] >> shift & mask);
+            return Some((self.data[block] >> shift) & mask);
         }
-        Some((self.data[block] >> shift) | (self.data[block + 1] << (64 - shift) & mask))
+        Some(((self.data[block] >> shift) | (self.data[block + 1] << (64 - shift))) & mask)
+    }
+
+    #[inline(always)]
+    pub unsafe fn get_bits_unchecked(&self, index: usize, len: usize) -> u64 {
+        debug_assert!(len <= 64);
+        debug_assert!(index + len <= self.position);
+
+        if len == 0 {
+            return 0;
+        }
+
+        let block = index >> 6;
+        let shift = index & 63;
+        let mask = u64::MAX >> (64 - len);
+
+        if shift + len <= 64 {
+            (*self.data.get_unchecked(block) >> shift) & mask
+        } else {
+            ((*self.data.get_unchecked(block) >> shift)
+                | (*self.data.get_unchecked(block + 1) << (64 - shift))) & mask
+        }
     }
 
     #[inline(always)]

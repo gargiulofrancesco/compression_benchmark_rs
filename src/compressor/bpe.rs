@@ -108,7 +108,7 @@ impl Compressor for BPECompressor {
             // Update occurrences of the top pair
             for &position in positions.iter() {
                 // If position was already merged, skip
-                if !bv.get(position as usize).unwrap() {
+                if unsafe { !bv.get_unchecked(position as usize) } {
                     continue;
                 }
 
@@ -175,7 +175,7 @@ impl Compressor for BPECompressor {
         let mut i = 0;
         for &end_position in end_positions.iter() {
             while i < end_position {
-                if bv.get(i).unwrap() {
+                if unsafe{ bv.get_unchecked(i) } {
                     self.compressed_data.push(token_ids[i]);
                 }
                 i += 1;

@@ -5,7 +5,7 @@ use rustc_hash::FxHashMap;
 use rand::seq::SliceRandom;
 use rand::thread_rng;
 
-const BITS_PER_TOKEN: usize = 20;
+const BITS_PER_TOKEN: usize = 13;
 const MAX_TOKEN_ID: usize = (1 << BITS_PER_TOKEN) - 1; 
 const FAST_ACCESS_SIZE: usize = 16;
 
@@ -38,8 +38,8 @@ impl Compressor for OnPairBVCompressor {
 
         for i in 0..self.compressed_data.len() / BITS_PER_TOKEN {
             let offset = i * BITS_PER_TOKEN;
-            let token_id = self.compressed_data.get_bits(offset, BITS_PER_TOKEN).unwrap() as usize;
-            
+            let token_id = unsafe { self.compressed_data.get_bits_unchecked(offset, BITS_PER_TOKEN) as usize };
+
             unsafe {
                 let dict_start = *end_positions_ptr.add(token_id as usize) as usize;
                 let dict_end = *end_positions_ptr.add(token_id as usize + 1) as usize;
@@ -71,7 +71,7 @@ impl Compressor for OnPairBVCompressor {
 
         for i in item_start..item_end {
             let offset = i * BITS_PER_TOKEN;
-            let token_id = self.compressed_data.get_bits(offset, BITS_PER_TOKEN).unwrap() as usize;
+            let token_id = unsafe { self.compressed_data.get_bits_unchecked(offset, BITS_PER_TOKEN) as usize };
 
             unsafe {
                 let dict_start = *end_positions_ptr.add(token_id as usize) as usize;
