@@ -24,6 +24,7 @@ pub trait Compressor {
     fn name(&self) -> &str;
 }
 
+#[allow(dead_code)]
 const DEFAULT_BLOCK_SIZE: usize = 64 * 1024;  // 64 KB (a good range is from 4 KB to 128 KB)
 
 pub struct BlockMetadata {

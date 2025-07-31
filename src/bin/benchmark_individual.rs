@@ -8,7 +8,6 @@ use compression_benchmark_rs::compressor::onpair::OnPairCompressor;
 use std::path::Path;
 use std::time::Instant;
 
-const DEFAULT_CORE_ID: usize = 0;
 const N_QUERIES: usize = 1000000;
 
 enum CompressorEnum {
@@ -31,9 +30,12 @@ fn main() {
     let compressor_name = &args[2];
     let output_file = &args[3];
     let core_id = if args.len() > 4 {
-        args[4].parse::<usize>().unwrap_or(DEFAULT_CORE_ID)
+        Some(args[4].parse::<usize>().unwrap_or_else(|_| {
+            eprintln!("Error: Invalid core_id '{}'. Must be a valid number.", args[4]);
+            std::process::exit(1);
+        }))
     } else {
-        DEFAULT_CORE_ID
+        None
     };
 
     // Check if dataset path exists and is a file
@@ -47,9 +49,13 @@ fn main() {
         std::process::exit(1);
     }
 
-    // Set CPU affinity
-    set_affinity(core_id);
-
+    // Set CPU affinity if specified
+    if let Some(core) = core_id {
+        if !try_set_affinity(core) {
+            eprintln!("Warning: Failed to set CPU affinity to core {}. Continuing without core pinning.", core);
+        }
+    }
+    
     // Load dataset
     let dataset_name = dataset_path.file_name().unwrap().to_str().unwrap().to_string();
     let (data, end_positions) = process_dataset(dataset_path);

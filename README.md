@@ -31,7 +31,7 @@ RUSTFLAGS="-C target-cpu=native" cargo build --release
 
 #### Single Algorithm Benchmark
 ```bash
-./target/release/benchmark_individual <dataset.json> <algorithm> <output.json>
+./target/release/benchmark_individual <dataset.json> <algorithm> <output.json> [core_id]
 ```
 
 **Example:**
@@ -41,7 +41,13 @@ RUSTFLAGS="-C target-cpu=native" cargo build --release
 
 #### Complete Benchmark Suite
 ```bash
-./target/release/benchmark_all <dataset_directory>
+./target/release/benchmark_all <dataset_directory> [core_id]
+```
+
+**Examples:**
+```bash
+# Run on all datasets with core pinning to CPU core 0
+./target/release/benchmark_all data/ 0
 ```
 
 This runs all algorithms on all JSON datasets in the directory and produces a comprehensive comparison.

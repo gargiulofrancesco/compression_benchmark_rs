@@ -15,11 +15,21 @@ fn main() {
 
     // Check if a directory argument is provided
     if args.len() < 2 {
-        eprintln!("Error: Missing directory argument. Usage is: {} <directory>", args[0]);
+        eprintln!("Usage: {} <directory> [core_id]", args[0]);
+        eprintln!("  <directory>  - Directory containing JSON dataset files");
+        eprintln!("  [core_id]    - Optional CPU core ID for pinning");
         std::process::exit(1);
     }
 
     let directory = &args[1];
+    let core_id = if args.len() > 2 {
+        Some(args[2].parse::<usize>().unwrap_or_else(|_| {
+            eprintln!("Error: Invalid core_id '{}'. Must be a valid number.", args[2]);
+            std::process::exit(1);
+        }))
+    } else {
+        None
+    };
 
     // Check if the path is a valid directory
     let dir = Path::new(directory);
@@ -47,12 +57,17 @@ fn main() {
                 println!("- {}", compressor);
                 for _ in 0..N_ITERATIONS {
                     // Execute the benchmark command
-                    let status = Command::new(BENCHMARK_PATH)
-                        .arg(dataset_path)
-                        .arg(compressor)
-                        .arg(OUTPUT_FILE)
-                        .status()
-                        .expect("Failed to execute benchmark");
+                    let mut cmd = Command::new(BENCHMARK_PATH);
+                    cmd.arg(dataset_path)
+                       .arg(compressor)
+                       .arg(OUTPUT_FILE);
+                    
+                    // Add core_id if specified
+                    if let Some(core) = core_id {
+                        cmd.arg(core.to_string());
+                    }
+                    
+                    let status = cmd.status().expect("Failed to execute benchmark");
                     
                     if !status.success() {
                         eprintln!("Benchmark failed for dataset '{}' with compressor '{}'.", dataset_path, compressor);

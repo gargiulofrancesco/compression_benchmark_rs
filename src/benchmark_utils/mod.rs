@@ -3,6 +3,7 @@ use serde::{Serialize, Deserialize};
 use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
+#[cfg(target_os = "linux")]
 use libc::{self, cpu_set_t, CPU_SET, CPU_ZERO};
 use rand::{thread_rng, Rng};
 use rand::distributions::Uniform;
@@ -164,14 +165,19 @@ pub fn print_benchmark_results(results: &[BenchmarkResult]) {
     }
 }
 
-pub fn set_affinity(core_id: usize) {
+#[cfg(target_os = "linux")]
+pub fn try_set_affinity(core_id: usize) -> bool {
     unsafe {
         let mut cpuset: cpu_set_t = std::mem::zeroed();
         CPU_ZERO(&mut cpuset);
         CPU_SET(core_id, &mut cpuset);
         
-        if libc::sched_setaffinity(0, std::mem::size_of::<cpu_set_t>(), &cpuset) != 0 {
-            println!("sched_setaffinity failed");
-        }
+        libc::sched_setaffinity(0, std::mem::size_of::<cpu_set_t>(), &cpuset) == 0
     }
+}
+
+#[cfg(not(target_os = "linux"))]
+pub fn try_set_affinity(_core_id: usize) -> bool {
+    // CPU affinity is not supported on this platform
+    false
 }
