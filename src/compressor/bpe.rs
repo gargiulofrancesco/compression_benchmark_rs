@@ -1,17 +1,30 @@
+//! Byte Pair Encoding (BPE) compression implementation
+//!
+//! Classic BPE algorithm adapted for string collections with random access support.
+//! Iteratively merges the most frequent byte pairs to build a compression dictionary,
+//! providing a well-established baseline for comparison with OnPair algorithms.
+
 use super::Compressor;
 use crate::bit_vector::BitVector;
 use std::collections::BinaryHeap;
 use rustc_hash::{FxHashMap, FxHashSet};
 
+/// Optimization constant for memory copy operations
 const FAST_ACCESS_SIZE: usize = 16;
 
+/// Type alias for byte pairs in the merging process
 type Pair = (u16, u16);
 
+/// BPE compressor implementing classic byte pair encoding
+/// 
+/// Provides a reference implementation of traditional BPE for performance comparison.
+/// Builds dictionary through iterative merging of most frequent adjacent token pairs,
+/// maintaining compatibility with random access requirements.
 pub struct BPECompressor {
-    compressed_data: Vec<u16>,                  // Store the compressed data as bytes
-    item_end_positions: Vec<usize>,             // Store the end positions of each compressed item
-    dictionary: Vec<u8>,                        // Store the dictionary
-    dictionary_end_positions: Vec<u32>,         // Store the end positions of each element in the dictionary
+    compressed_data: Vec<u16>,              // Token ID sequences (2 bytes per token)
+    item_end_positions: Vec<usize>,         // Compressed string boundaries
+    dictionary: Vec<u8>,                    // Token definitions (variable length)
+    dictionary_end_positions: Vec<u32>,     // Token boundary positions in dictionary
 }
 
 impl Compressor for BPECompressor {
@@ -243,7 +256,9 @@ impl Compressor for BPECompressor {
     }
 
     fn space_used_bytes(&self) -> usize {
-        (self.compressed_data.len() * std::mem::size_of::<u16>()) + self.dictionary.len() + (self.dictionary_end_positions.len() * std::mem::size_of::<u32>())
+        (self.compressed_data.len() * std::mem::size_of::<u16>()) 
+        + self.dictionary.len() 
+        + (self.dictionary_end_positions.len() * std::mem::size_of::<u32>())
     }
 
     fn name(&self) -> &str {

@@ -1,16 +1,28 @@
+//! OnPair compression algorithm for string collections
+//!
+//! Implements a two-phase compression strategy optimized for random access:
+//! 1. **Training Phase**: Discovers frequent adjacent token pairs using longest prefix matching
+//! 2. **Parsing Phase**: Compresses strings independently using the learned dictionary
+//!
+//! The algorithm maintains a 65,536-token dictionary with 2-byte token IDs.
+
 use crate::longest_prefix_matcher::lpm::LongestPrefixMatcher;
 use super::Compressor;
 use rustc_hash::FxHashMap;
 use rand::seq::SliceRandom;
 use rand::thread_rng;
 
+/// Optimization constant for memory copy operations
 const FAST_ACCESS_SIZE: usize = 16;
 
+/// OnPair compressor with unlimited token length
+/// 
+/// Core implementation of the OnPair algorithm supporting arbitrary-length tokens.
 pub struct OnPairCompressor {
-    compressed_data: Vec<u16>,                  // Store the compressed data as token IDs
-    item_end_positions: Vec<usize>,             // Store the end positions of each compressed item
-    dictionary: Vec<u8>,                        // Store the dictionary
-    dictionary_end_positions: Vec<u32>,         // Store the end positions of each element in the dictionary
+    compressed_data: Vec<u16>,              // Token ID sequences (2 bytes per token)
+    item_end_positions: Vec<usize>,         // Compressed string boundaries
+    dictionary: Vec<u8>,                    // Token definitions (variable length)
+    dictionary_end_positions: Vec<u32>,     // Token boundary positions in dictionary
 }
 
 impl Compressor for OnPairCompressor {
@@ -87,7 +99,9 @@ impl Compressor for OnPairCompressor {
     }
 
     fn space_used_bytes(&self) -> usize {
-        (self.compressed_data.len() * std::mem::size_of::<u16>()) + self.dictionary.len() + (self.dictionary_end_positions.len() * std::mem::size_of::<u32>())
+        (self.compressed_data.len() * std::mem::size_of::<u16>()) 
+        + self.dictionary.len() 
+        + (self.dictionary_end_positions.len() * std::mem::size_of::<u32>())
     }
 
     fn name(&self) -> &str {
@@ -96,6 +110,16 @@ impl Compressor for OnPairCompressor {
 }
 
 impl OnPairCompressor {
+    /// Phase 1: Dictionary population
+    /// 
+    /// Uses longest prefix matching to parse training data and identify frequent
+    /// adjacent token pairs.
+    /// 
+    /// # Algorithm
+    /// 1. Initialize 256 single-byte tokens  
+    /// 2. Parse shuffled training data with longest prefix matching
+    /// 3. Track adjacent token pair frequencies
+    /// 4. Merge frequent pairs into new tokens until dictionary full (65,536 tokens)
     fn train(&mut self, data: &[u8], end_positions: &[usize]) -> LongestPrefixMatcher<u16> {
         self.dictionary_end_positions.push(0);
         
@@ -169,6 +193,10 @@ impl OnPairCompressor {
         lpm
     }
     
+    /// Phase 2: String compression using learned dictionary
+    /// 
+    /// Compresses each string independently by greedily applying longest prefix matching
+    /// with the constructed dictionary. Each string becomes a sequence of token IDs.
     fn parse(&mut self, data: &[u8], end_positions: &[usize], lpm: &LongestPrefixMatcher<u16>) {
         self.item_end_positions.push(0);
 

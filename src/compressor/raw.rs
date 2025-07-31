@@ -1,8 +1,18 @@
+//! Raw (uncompressed) baseline implementation
+//!
+//! Provides a no-compression baseline for performance comparison. Simply stores
+//! data in its original form while maintaining the same interface as compressed
+//! algorithms.
+
 use crate::compressor::Compressor;
 
+/// Baseline compressor that stores data without compression
+/// 
+/// Maintains original data layout while implementing the Compressor interface.
+/// Used as a performance baseline to measure compression algorithm trade-offs.
 pub struct RawCompressor {
-    compressed_data: Vec<u8>,
-    offsets: Vec<usize>,
+    compressed_data: Vec<u8>,   // Original uncompressed data
+    offsets: Vec<usize>,        // Boundary positions for random access
 }
 
 impl Compressor for RawCompressor {
@@ -19,16 +29,15 @@ impl Compressor for RawCompressor {
         }
     }
 
-    /// Compresses the provided data by simply copying it to internal storage.
     fn compress(&mut self, data: &[u8], end_positions: &[usize]) {
-        // Copy end positions
+        // Copy boundary positions for random access
         unsafe {
             let src = end_positions.as_ptr();
             let dst = self.offsets.as_mut_ptr();
             std::ptr::copy_nonoverlapping(src, dst, end_positions.len());
         }
 
-        // Copy data
+        // Copy data unchanged
         unsafe {
             let src = data.as_ptr();
             let dst = self.compressed_data.as_mut_ptr();
@@ -36,7 +45,6 @@ impl Compressor for RawCompressor {
         }
     }
 
-    /// Decompresses the stored data by copying it into the provided buffer.
     fn decompress(&self, buffer: &mut [u8]) -> usize {
         unsafe {
             let src = self.compressed_data.as_ptr();
@@ -47,7 +55,6 @@ impl Compressor for RawCompressor {
         self.compressed_data.len()
     }
 
-    /// Retrieves an item starting at the specified index.
     #[inline(always)]
     fn get_item_at(&mut self, index: usize, buffer: &mut [u8]) -> usize {
         unsafe {
@@ -63,12 +70,10 @@ impl Compressor for RawCompressor {
         }
     }
 
-    /// Returns the amount of space used by the compressed data.
     fn space_used_bytes(&self) -> usize {
         self.compressed_data.len()
     }
     
-    /// Returns the name of this compressor
     fn name(&self) -> &str {
         "Raw"
     }

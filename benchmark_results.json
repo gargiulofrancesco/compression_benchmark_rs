@@ -1,0 +1,122 @@
+[
+  {
+    "dataset_name": "twitter.json",
+    "compressor_name": "Raw",
+    "compression_rate": 1.0,
+    "compression_speed": 18985.423024122378,
+    "decompression_speed": 22197.25925759115,
+    "average_random_access_time": 242
+  },
+  {
+    "dataset_name": "twitter.json",
+    "compressor_name": "OnPair",
+    "compression_rate": 2.6520988450924956,
+    "compression_speed": 99.77699954378406,
+    "decompression_speed": 5811.479899864362,
+    "average_random_access_time": 226
+  },
+  {
+    "dataset_name": "twitter.json",
+    "compressor_name": "OnPair16",
+    "compression_rate": 2.6435957389363556,
+    "compression_speed": 155.88341904075628,
+    "decompression_speed": 6524.605675635114,
+    "average_random_access_time": 228
+  },
+  {
+    "dataset_name": "book_reviews.json",
+    "compressor_name": "Raw",
+    "compression_rate": 1.0,
+    "compression_speed": 22132.469904064583,
+    "decompression_speed": 23341.847561049035,
+    "average_random_access_time": 294
+  },
+  {
+    "dataset_name": "book_reviews.json",
+    "compressor_name": "OnPair",
+    "compression_rate": 3.292357285490958,
+    "compression_speed": 130.2873735073037,
+    "decompression_speed": 6640.503095088945,
+    "average_random_access_time": 315
+  },
+  {
+    "dataset_name": "book_reviews.json",
+    "compressor_name": "OnPair16",
+    "compression_rate": 3.294602381435962,
+    "compression_speed": 229.38971411937763,
+    "decompression_speed": 7803.6954233338,
+    "average_random_access_time": 307
+  },
+  {
+    "dataset_name": "urls.json",
+    "compressor_name": "Raw",
+    "compression_rate": 1.0,
+    "compression_speed": 20914.09326278578,
+    "decompression_speed": 23329.848635912087,
+    "average_random_access_time": 354
+  },
+  {
+    "dataset_name": "urls.json",
+    "compressor_name": "OnPair",
+    "compression_rate": 2.8019744938052176,
+    "compression_speed": 13.643340333918328,
+    "decompression_speed": 4455.860095502832,
+    "average_random_access_time": 341
+  },
+  {
+    "dataset_name": "urls.json",
+    "compressor_name": "OnPair16",
+    "compression_rate": 2.6869554215029443,
+    "compression_speed": 186.3195547581888,
+    "decompression_speed": 6645.9407379424665,
+    "average_random_access_time": 334
+  },
+  {
+    "dataset_name": "book_titles.json",
+    "compressor_name": "Raw",
+    "compression_rate": 1.0,
+    "compression_speed": 19593.986626890575,
+    "decompression_speed": 23022.730143351713,
+    "average_random_access_time": 272
+  },
+  {
+    "dataset_name": "book_titles.json",
+    "compressor_name": "OnPair",
+    "compression_rate": 2.839454556132291,
+    "compression_speed": 109.63393809914264,
+    "decompression_speed": 5690.8090896583835,
+    "average_random_access_time": 262
+  },
+  {
+    "dataset_name": "book_titles.json",
+    "compressor_name": "OnPair16",
+    "compression_rate": 2.8164217146559976,
+    "compression_speed": 177.97568207759605,
+    "decompression_speed": 6771.588608675911,
+    "average_random_access_time": 262
+  },
+  {
+    "dataset_name": "news.json",
+    "compressor_name": "Raw",
+    "compression_rate": 1.0,
+    "compression_speed": 17313.658289476218,
+    "decompression_speed": 22892.235205337547,
+    "average_random_access_time": 198
+  },
+  {
+    "dataset_name": "news.json",
+    "compressor_name": "OnPair",
+    "compression_rate": 3.269177767365403,
+    "compression_speed": 99.45728591815916,
+    "decompression_speed": 6311.2063076541435,
+    "average_random_access_time": 153
+  },
+  {
+    "dataset_name": "news.json",
+    "compressor_name": "OnPair16",
+    "compression_rate": 3.2321007354812687,
+    "compression_speed": 137.42127477602656,
+    "decompression_speed": 7602.67718259458,
+    "average_random_access_time": 157
+  }
+]

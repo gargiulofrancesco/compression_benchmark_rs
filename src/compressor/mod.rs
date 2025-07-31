@@ -1,26 +1,46 @@
+//! Compression algorithm abstractions and implementations
+//!
+//! This module defines the core `Compressor` trait that standardizes the interface
+//! for string compression algorithms evaluated in this benchmark suite.
+
 pub mod raw;
 pub mod bpe;
 pub mod onpair;
 pub mod onpair16;
 pub mod onpair_bv;
 
+/// Core trait defining the compression algorithm interface
+/// 
+/// All implementations must provide:
+/// - Compression/decompression of string collections
+/// - Access to individual strings by index
+/// - Space usage reporting for compression ratio calculation
 pub trait Compressor {
-    /// Creates a new compressor allocating memory for the specified data size and number of elements.
+    /// Creates a new compressor instance with pre-allocated buffers
     fn new(data_size: usize, n_elements: usize) -> Self;
 
-    /// Compresses the provided data and stores it internally.
+    /// Compresses string collection and stores compressed representation internally
+    /// 
+    /// # Arguments
+    /// - `data`: Concatenated string data as byte array
+    /// - `end_positions`: Cumulative end positions for each string
     fn compress(&mut self, data: &[u8], end_positions: &[usize]);
 
-    /// Decompresses the internally stored data and returns the number of decompressed bytes.
+    /// Decompresses entire collection to provided buffer
+    /// 
+    /// Returns the number of bytes written to the output buffer.
     fn decompress(&self, buffer: &mut [u8]) -> usize;
 
-    /// Retrieves the item at the specified index and returns its size in bytes.
+    /// Direct random access to individual string by index
+    /// 
+    /// Core operation for access latency measurement. Writes the requested
+    /// string to the provided buffer and returns its size in bytes.
     fn get_item_at(&mut self, index: usize, buffer: &mut [u8]) -> usize;
 
-    /// Returns the amount of space used by the compressed data in bytes.
+    /// Reports compressed data size for compression ratio calculation
     fn space_used_bytes(&self) -> usize;
 
-    /// Returns the name of the compressor.
+    /// Returns algorithm identifier for result reporting
     fn name(&self) -> &str;
 }
 

@@ -1,3 +1,12 @@
+//! Benchmark utilities and data structures for compression algorithm evaluation
+//!
+//! This module provides core infrastructure for systematic performance measurement
+//! of string compression algorithms, including:
+//! - Dataset loading and preprocessing
+//! - Random query generation for access pattern simulation  
+//! - Result aggregation and statistical analysis
+//! - CPU affinity management for reproducible measurements
+
 use prettytable::{row, Table};
 use serde::{Serialize, Deserialize};
 use std::collections::HashMap;
@@ -8,16 +17,27 @@ use libc::{self, cpu_set_t, CPU_SET, CPU_ZERO};
 use rand::{thread_rng, Rng};
 use rand::distributions::Uniform;
 
+/// Performance metrics for a single algorithm-dataset combination
 #[derive(Serialize, Deserialize, Clone)]
 pub struct BenchmarkResult {
     pub dataset_name: String,
     pub compressor_name: String,
-    pub compression_rate: f64,
-    pub compression_speed: f64, // in MiB/s
-    pub decompression_speed: f64, // in MiB/s
-    pub average_random_access_time: u128, // in nanoseconds
+    pub compression_rate: f64,              // Space reduction factor
+    pub compression_speed: f64,             // Throughput in MiB/s
+    pub decompression_speed: f64,           // Throughput in MiB/s
+    pub average_random_access_time: u128,   // Latency in nanoseconds
 }
 
+/// Loads and preprocesses JSON string datasets for benchmark evaluation
+/// 
+/// Expects JSON format: array of strings representing individual records.
+/// Returns flattened byte representation and positional metadata for efficient
+/// random access during benchmark execution.
+///
+/// # Returns
+/// - `Vec<u8>`: Concatenated string data as bytes
+/// - `Vec<usize>`: Boundary positions starting with 0, then cumulative string lengths.
+///   String i is located at data[end_positions[i]..end_positions[i+1]]
 pub fn process_dataset(path: &Path) -> (Vec<u8>, Vec<usize>) {
     let content = fs::read_to_string(path).unwrap();
     let strings: Vec<String> = serde_json::from_str(&content).unwrap();
@@ -25,6 +45,7 @@ pub fn process_dataset(path: &Path) -> (Vec<u8>, Vec<usize>) {
     let data: Vec<u8> = strings.iter().flat_map(|s| s.as_bytes()).copied().collect();
     let mut end_positions: Vec<usize> = Vec::new();
 
+    // Start with 0, then append cumulative string lengths for boundary indexing
     end_positions.push(0);
     for str in strings.iter() {
         end_positions.push(end_positions.last().unwrap() + str.len());
@@ -33,6 +54,14 @@ pub fn process_dataset(path: &Path) -> (Vec<u8>, Vec<usize>) {
     (data, end_positions)
 }
 
+/// Generates uniformly distributed random queries for access pattern simulation
+/// 
+/// Creates a representative workload for random access performance measurement.
+/// Uniform distribution ensures unbiased latency assessment across all dataset records.
+///
+/// # Arguments
+/// - `n`: Total number of records in dataset
+/// - `n_queries`: Number of random queries to generate
 pub fn generate_random_queries(n: usize, n_queries: usize) -> Vec<usize> {
     let mut rng = thread_rng();
     let dist = Uniform::from(0..n);

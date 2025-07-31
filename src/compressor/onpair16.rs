@@ -1,3 +1,9 @@
+//! OnPair16 compression algorithm - length-constrained variant
+//!
+//! Optimized variant of OnPair that constrains dictionary tokens to maximum 16 bytes.
+//! This limitation enables significant performance optimizations in both longest prefix
+//! matching and decompression while maintaining competitive compression ratios.
+
 use crate::longest_prefix_matcher::lpm16::LongestPrefixMatcher16;
 use crate::longest_prefix_matcher::lpm16::StaticLongestPrefixMatcher16;
 use super::Compressor;
@@ -5,13 +11,18 @@ use rustc_hash::FxHashMap;
 use rand::seq::SliceRandom;
 use rand::thread_rng;
 
+/// Maximum token length constraint for optimization
 const MAX_LENGTH: usize = 16;
 
+/// OnPair compressor with 16-byte token length constraint
+/// 
+/// Length-constrained variant that trades some compression effectiveness for
+/// significant performance improvements in both compression and decompression.
 pub struct OnPair16Compressor {
-    compressed_data: Vec<u16>,                  // Store the compressed data as token IDs
-    item_end_positions: Vec<usize>,             // Store the end positions of each compressed item
-    dictionary: Vec<u8>,                        // Store the dictionary
-    dictionary_end_positions: Vec<u32>,         // Store the end positions of each element in the dictionary
+    compressed_data: Vec<u16>,              // Token ID sequences (2 bytes per token)
+    item_end_positions: Vec<usize>,         // Compressed string boundaries  
+    dictionary: Vec<u8>,                    // Token definitions (≤16 bytes each)
+    dictionary_end_positions: Vec<u32>,     // Token boundary positions in dictionary
 }
 
 impl Compressor for OnPair16Compressor {
@@ -37,7 +48,6 @@ impl Compressor for OnPair16Compressor {
 
         for &token_id in self.compressed_data.iter(){
             unsafe {
-                // Access dictionary positions using raw pointers
                 let dict_start = *end_positions_ptr.add(token_id as usize) as usize;
                 let dict_end = *end_positions_ptr.add(token_id as usize + 1) as usize;
                 let length = dict_end - dict_start;

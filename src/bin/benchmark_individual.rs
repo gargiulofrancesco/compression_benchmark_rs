@@ -1,3 +1,14 @@
+//! Individual benchmark executor for compression algorithm evaluation
+//!
+//! This binary performs isolated performance measurement of a single compression algorithm
+//! on a single dataset. Metrics collected include:
+//! - Compression ratio and throughput (MiB/s)
+//! - Decompression throughput (MiB/s) 
+//! - Random access latency (ns)
+//!
+//! Results are appended to a JSON file for aggregation by the main benchmark harness.
+//! CPU core affinity can be specified for consistent measurements in controlled environments.
+
 use compression_benchmark_rs::benchmark_utils::*;
 use compression_benchmark_rs::compressor::bpe::BPECompressor;
 use compression_benchmark_rs::compressor::onpair_bv::OnPairBVCompressor;
@@ -8,8 +19,10 @@ use compression_benchmark_rs::compressor::onpair::OnPairCompressor;
 use std::path::Path;
 use std::time::Instant;
 
+/// Number of random access queries for latency measurement
 const N_QUERIES: usize = 1000000;
 
+/// Wrapper enum for compression algorithm implementations
 enum CompressorEnum {
     Raw(RawCompressor),
     BPE(BPECompressor),
@@ -18,6 +31,7 @@ enum CompressorEnum {
     OnPairBV(OnPairBVCompressor),
 }
 
+/// Individual benchmark execution entry point
 fn main() {
     let args: Vec<String> = std::env::args().collect();
 
@@ -87,6 +101,15 @@ fn main() {
     append_benchmark_result(&result, Path::new(output_file));
 }
 
+/// Core benchmark function implementing the measurement protocol
+/// 
+/// Executes the complete evaluation pipeline:
+/// 1. Compression phase with timing measurement
+/// 2. Full decompression with validation and timing  
+/// 3. Random access evaluation over N_QUERIES uniformly distributed queries
+/// 4. Data integrity verification at each step
+///
+/// Returns aggregated performance metrics for statistical analysis.
 fn benchmark<T: Compressor>(
     compressor: &mut T, 
     dataset_name: String, 
@@ -98,25 +121,25 @@ fn benchmark<T: Compressor>(
     buffer.resize(data.len() + 1024, 0);
     let data_bytes = data.len() as f64;
 
-    // Compression
+    // Phase 1: Compression measurement
     let start_compression = Instant::now();
     compressor.compress(&data, end_positions);
     let compression_time = start_compression.elapsed().as_secs_f64();
     let compression_rate = data_bytes / compressor.space_used_bytes() as f64;
     let compression_speed = (data_bytes / (1024.0 * 1024.0)) / compression_time;    
 
-    // Decompression
+    // Phase 2: Decompression measurement with validation
     let start_decompression = Instant::now();
     compressor.decompress(&mut buffer);
     let decompression_time = start_decompression.elapsed().as_secs_f64();
     let decompression_speed = (data_bytes / (1024.0 * 1024.0)) / decompression_time;
 
-    // Validate decompressed data
+    // Verify decompression correctness
     if !data.eq(&buffer[..data.len()]) {
         panic!("Data mismatch during decompression for compressor: {}", compressor.name());
     }
 
-    // Random Access
+    // Phase 3: Random access latency measurement
     let mut random_access_times: Vec<u128> = Vec::new();
     for &query in queries {
         let start_position = end_positions[query];
@@ -124,11 +147,11 @@ fn benchmark<T: Compressor>(
         let item_size = end_position - start_position;
 
         let start_random_access = Instant::now();
-        compressor.get_item_at(query, &mut buffer);  // Access the item at index query
+        compressor.get_item_at(query, &mut buffer);
         let random_access_time = start_random_access.elapsed().as_nanos();
         random_access_times.push(random_access_time);
 
-        // Validate random access data
+        // Verify random access correctness
         if !data[start_position..end_position].eq(&buffer[..item_size]) {
             panic!("Data mismatch during random access for compressor: {}", compressor.name());
         }

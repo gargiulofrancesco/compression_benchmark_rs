@@ -1,3 +1,12 @@
+//! OnPair with bit-vector compression
+//!
+//! Space-optimized variant of OnPair that uses bit-vector encoding for token storage.
+//! Reduces token IDs to achieve better space efficiency at the cost of reduced 
+//! dictionary capacity.
+//!
+//! Demonstrates the trade-off between dictionary size and compressed representation
+//! overhead in token-based compression schemes.
+
 use crate::bit_vector::BitVector;
 use crate::longest_prefix_matcher::lpm::LongestPrefixMatcher;
 use super::Compressor;
@@ -5,15 +14,20 @@ use rustc_hash::FxHashMap;
 use rand::seq::SliceRandom;
 use rand::thread_rng;
 
+/// Bits per token ID for space-optimized encoding
 const BITS_PER_TOKEN: usize = 13;
 const MAX_TOKEN_ID: usize = (1 << BITS_PER_TOKEN) - 1; 
+/// Optimization constant for memory copy operations
 const FAST_ACCESS_SIZE: usize = 16;
 
+/// OnPair compressor with bit-vector token storage
+/// 
+/// OnPair variant that reduces per-token storage overhead through bit-level packing. 
 pub struct OnPairBVCompressor {
-    compressed_data: BitVector,                 // Store the compressed data as token IDs
-    item_end_positions: Vec<usize>,             // Store the end positions of each compressed item
-    dictionary: Vec<u8>,                        // Store the dictionary
-    dictionary_end_positions: Vec<u32>,         // Store the end positions of each element in the dictionary
+    compressed_data: BitVector,             // Bit-packed token sequences
+    item_end_positions: Vec<usize>,         // Compressed string boundaries
+    dictionary: Vec<u8>,                    // Token definitions (variable length)
+    dictionary_end_positions: Vec<u32>,     // Token boundary positions in dictionary
 }
 
 impl Compressor for OnPairBVCompressor {
