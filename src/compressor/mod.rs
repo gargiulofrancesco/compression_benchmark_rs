@@ -1,10 +1,5 @@
 pub mod raw;
-pub mod lz4;
-pub mod snappy;
-pub mod zstd;
 pub mod bpe;
-pub mod sampled_bpe;
-pub mod sampled_bpe16;
 pub mod onpair;
 pub mod onpair16;
 pub mod onpair_bv;
