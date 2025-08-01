@@ -30,15 +30,18 @@ pub struct BenchmarkResult {
 
 /// Loads and preprocesses JSON string datasets for benchmark evaluation
 /// 
-/// Expects JSON format: array of strings representing individual records.
+/// Expects JSON format: array of strings representing individual strings.
 /// Returns flattened byte representation and positional metadata for efficient
 /// random access during benchmark execution.
+/// 
+/// # Arguments
+/// - `path`: Path to the JSON dataset file
 ///
 /// # Returns
 /// - `Vec<u8>`: Concatenated string data as bytes
 /// - `Vec<usize>`: Boundary positions starting with 0, then cumulative string lengths.
-///   String i is located at data[end_positions[i]..end_positions[i+1]]
-pub fn process_dataset(path: &Path) -> (Vec<u8>, Vec<usize>) {
+///   String i is located at `data[end_positions[i]..end_positions[i+1]]`
+pub fn load_dataset(path: &Path) -> (Vec<u8>, Vec<usize>) {
     let content = fs::read_to_string(path).unwrap();
     let strings: Vec<String> = serde_json::from_str(&content).unwrap();
 
@@ -57,11 +60,14 @@ pub fn process_dataset(path: &Path) -> (Vec<u8>, Vec<usize>) {
 /// Generates uniformly distributed random queries for access pattern simulation
 /// 
 /// Creates a representative workload for random access performance measurement.
-/// Uniform distribution ensures unbiased latency assessment across all dataset records.
+/// Uniform distribution ensures unbiased latency assessment across all dataset strings.
 ///
 /// # Arguments
-/// - `n`: Total number of records in dataset
+/// - `n`: Total number of strings in dataset
 /// - `n_queries`: Number of random queries to generate
+/// 
+/// # Returns
+/// - `Vec<usize>`: Vector of random indices within the range [0, n)
 pub fn generate_random_queries(n: usize, n_queries: usize) -> Vec<usize> {
     let mut rng = thread_rng();
     let dist = Uniform::from(0..n);
@@ -74,6 +80,16 @@ pub fn generate_random_queries(n: usize, n_queries: usize) -> Vec<usize> {
     queries
 }
 
+/// Reads benchmark results from a JSON file
+/// 
+/// Loads previously saved benchmark results for analysis or continuation of benchmarking.
+/// Returns empty vector if file doesn't exist or cannot be parsed.
+///
+/// # Arguments
+/// - `file_path`: Path to the JSON results file
+/// 
+/// # Returns
+/// - `Vec<BenchmarkResult>`: Loaded benchmark results
 pub fn read_benchmark_results(file_path: &str) -> Vec<BenchmarkResult> {
     if Path::new(file_path).exists() {
         let file_content = fs::read_to_string(file_path).expect("Failed to read file");
@@ -86,10 +102,18 @@ pub fn read_benchmark_results(file_path: &str) -> Vec<BenchmarkResult> {
     }
 }
 
-pub fn append_benchmark_result(result: &BenchmarkResult, file_path: &Path) {
-    let mut results: Vec<BenchmarkResult> = if file_path.exists() {
+/// Appends a new benchmark result to the results file
+/// 
+/// Reads existing results, appends the new result, and writes back to file.
+/// Creates the file if it doesn't exist. Preserves all existing results.
+///
+/// # Arguments
+/// - `result`: The new benchmark result to append
+/// - `output_path`: Path to the output JSON file 
+pub fn append_benchmark_result(result: &BenchmarkResult, output_path: &Path) {
+    let mut results: Vec<BenchmarkResult> = if output_path.exists() {
         // Read existing results from the file if it exists
-        let data = fs::read_to_string(file_path).expect("Failed to read file");
+        let data = fs::read_to_string(output_path).expect("Failed to read file");
         serde_json::from_str(&data).expect("Failed to deserialize existing results")
     } else {
         // If the file doesn't exist, start with an empty vector
@@ -101,9 +125,16 @@ pub fn append_benchmark_result(result: &BenchmarkResult, file_path: &Path) {
 
     // Serialize the vector and write it back to the file
     let json = serde_json::to_string_pretty(&results).expect("Failed to serialize results");
-    fs::write(file_path, json).expect("Failed to write results to file");
+    fs::write(output_path, json).expect("Failed to write results to file");
 }
 
+/// Prints formatted benchmark results grouped by compressor
+/// 
+/// Groups results by compressor and dataset, calculates averages for each combination,
+/// then displays results in a tabular format with overall averages per compressor.
+/// 
+/// # Arguments
+/// - `results`: Vector of benchmark results to display
 pub fn print_benchmark_results(results: &[BenchmarkResult]) {
     // Group results by compressor and dataset name
     let mut grouped_results: HashMap<(String, String), Vec<&BenchmarkResult>> = HashMap::new();
@@ -194,6 +225,16 @@ pub fn print_benchmark_results(results: &[BenchmarkResult]) {
     }
 }
 
+/// Attempts to set CPU affinity for reproducible measurements
+/// 
+/// Tries to bind the current process to a specific CPU core to reduce
+/// measurement variance. Only supported on Linux systems.
+/// 
+/// # Arguments
+/// - `core_id`: The CPU core ID to bind to
+/// 
+/// # Returns
+/// - `bool`: True if CPU affinity was successfully set, false otherwise
 #[cfg(target_os = "linux")]
 pub fn try_set_affinity(core_id: usize) -> bool {
     unsafe {

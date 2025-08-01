@@ -72,7 +72,7 @@ fn main() {
     
     // Load dataset
     let dataset_name = dataset_path.file_name().unwrap().to_str().unwrap().to_string();
-    let (data, end_positions) = process_dataset(dataset_path);
+    let (data, end_positions) = load_dataset(dataset_path);
     let n_elements = end_positions.len() - 1;
     let queries = generate_random_queries(n_elements, N_QUERIES);
 
@@ -108,8 +108,16 @@ fn main() {
 /// 2. Full decompression with validation and timing  
 /// 3. Random access evaluation over N_QUERIES uniformly distributed queries
 /// 4. Data integrity verification at each step
+/// 
+/// # Arguments
+/// - `compressor`: The compression algorithm instance to benchmark
+/// - `dataset_name`: Name of the dataset being evaluated
+/// - `data`: Raw byte data from the dataset
+/// - `end_positions`: Boundary positions for individual strings in the data
+/// - `queries`: Vector of random indices for access pattern simulation
 ///
-/// Returns aggregated performance metrics for statistical analysis.
+/// # Returns
+/// - `BenchmarkResult`: Aggregated performance metrics for statistical analysis.
 fn benchmark<T: Compressor>(
     compressor: &mut T, 
     dataset_name: String, 

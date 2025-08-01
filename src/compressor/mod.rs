@@ -1,7 +1,8 @@
 //! Compression algorithm abstractions and implementations
 //!
 //! This module defines the core `Compressor` trait that standardizes the interface
-//! for string compression algorithms evaluated in this benchmark suite.
+//! for string compression algorithms evaluated in this benchmark suite. It provides
+//! a uniform interface for all compression algorithms in the benchmark framework.
 
 pub mod raw;
 pub mod bpe;
@@ -11,85 +12,180 @@ pub mod onpair_bv;
 
 /// Core trait defining the compression algorithm interface
 /// 
-/// All implementations must provide:
+/// This trait provides a uniform interface for all compression algorithms
+/// in the benchmark framework. All derived implementations must provide:
 /// - Compression/decompression of string collections
 /// - Access to individual strings by index
 /// - Space usage reporting for compression ratio calculation
 pub trait Compressor {
     /// Creates a new compressor instance with pre-allocated buffers
+    /// 
+    /// Create instances of compression algorithms with appropriate buffer sizes based 
+    /// on the dataset characteristics.
+    /// 
+    /// # Arguments
+    /// - `data_size`: Total size of input data in bytes
+    /// - `n_elements`: Number of individual strings in the dataset
     fn new(data_size: usize, n_elements: usize) -> Self;
 
-    /// Compresses string collection and stores compressed representation internally
+    /// Compresses the input dataset using the algorithm implementation
     /// 
     /// # Arguments
     /// - `data`: Concatenated string data as byte array
-    /// - `end_positions`: Cumulative end positions for each string
+    /// - `end_positions`: Boundary positions for individual strings (cumulative lengths)
     fn compress(&mut self, data: &[u8], end_positions: &[usize]);
 
-    /// Decompresses entire collection to provided buffer
+    /// Decompresses the entire dataset to provided buffer
     /// 
-    /// Returns the number of bytes written to the output buffer.
+    /// # Arguments
+    /// - `buffer`: Output buffer for decompressed data (must be pre-allocated)
+    /// 
+    /// # Returns
+    /// Number of bytes written to the output buffer
     fn decompress(&self, buffer: &mut [u8]) -> usize;
 
-    /// Direct random access to individual string by index
+    /// Retrieves a single string by index
     /// 
-    /// Core operation for access latency measurement. Writes the requested
-    /// string to the provided buffer and returns its size in bytes.
+    /// Core operation for access latency measurement. Provides direct access
+    /// to individual strings without decompressing the entire dataset.
+    /// Writes the requested string to the provided buffer.
+    /// 
+    /// # Arguments
+    /// - `index`: Zero-based index of the string to retrieve
+    /// - `buffer`: Output buffer for the decompressed string
+    /// 
+    /// # Returns
+    /// Number of bytes written to the buffer
     fn get_item_at(&mut self, index: usize, buffer: &mut [u8]) -> usize;
 
-    /// Reports compressed data size for compression ratio calculation
+    /// Reports total memory usage of the compressed representation
+    /// 
+    /// # Returns
+    /// Total bytes used by compressed data and metadata structures
     fn space_used_bytes(&self) -> usize;
 
-    /// Returns algorithm identifier for result reporting
+    /// Returns the human-readable name of the compression algorithm
+    /// 
+    /// # Returns
+    /// Identifier for the algorithm (e.g., "lz4", "zstd")
     fn name(&self) -> &str;
 }
 
 #[allow(dead_code)]
-const DEFAULT_BLOCK_SIZE: usize = 64 * 1024;  // 64 KB (a good range is from 4 KB to 128 KB)
+/// Default block size for block-based compression algorithms
+/// Set to 64 KB as a reasonable balance between compression efficiency and memory usage.
+const DEFAULT_BLOCK_SIZE: usize = 64 * 1024; 
 
+/// Metadata structure for individual compressed blocks
+/// 
+/// Stores essential information needed for block boundary management
+/// and random access within compressed datasets divided into fixed-size blocks.
 pub struct BlockMetadata {
-    pub end_position: usize,        // End position of this block in compressed data
-    pub num_items_psum: usize,      // Cumulative number of items up to this block
-    pub uncompressed_size: i32,     // Uncompressed size of this block
+    pub end_position: usize,    // End position of this block in compressed data
+    pub num_items_psum: usize,  // Cumulative number of items up to this block
+    pub uncompressed_size: i32, // Uncompressed size of this block
 }
 
+/// Extended trait for block-based compression algorithms
+/// 
+/// Provides infrastructure for compressors that divide input data into fixed-size blocks
+/// for independent compression. Enables efficient random access by maintaining block
+/// metadata and implementing block-level caching for repeated accesses.
 pub trait BlockCompressor: Compressor {
-    /// Returns the block size (in bytes) used by this compressor.
+    /// Returns the block size (in bytes) used by this compressor
+    /// 
+    /// # Returns
+    /// The size in bytes of each data block used for compression
     fn get_block_size(&self) -> usize;
 
-    /// Get the slice of compressed data.
+    /// Provides access to the entire compressed data
+    /// 
+    /// # Returns
+    /// Byte slice containing all compressed blocks concatenated together
     fn get_compressed_data(&self) -> &[u8];
 
-    /// Returns the metadata for all blocks.
+    /// Returns the metadata for all compressed blocks
+    ///
+    /// # Returns
+    /// Vector containing metadata for each compressed block
     fn get_blocks_metadata(&self) -> &Vec<BlockMetadata>;
 
-    /// Returns mutable metadata for all blocks.
+    /// Returns mutable access to block metadata
+    /// 
+    /// # Returns
+    /// Mutable vector containing metadata for each compressed block
     fn get_blocks_metadata_mut(&mut self) -> &mut Vec<BlockMetadata>;
 
-    /// Get the slice of item end positions.
+    /// Provides access to item end positions
+    /// 
+    /// # Returns
+    /// Slice containing cumulative end positions for each item
     fn get_item_end_positions(&self) -> &[usize];
 
-    /// Returns mutable item end positions.
+    /// Returns mutable access to item end positions
+    /// 
+    /// # Returns
+    /// Mutable vector containing cumulative end positions for each item
     fn get_item_end_positions_mut(&mut self) -> &mut Vec<usize>;
 
-    /// Compresses a single block of data, returns the number of bytes of the compressed block.
+    /// Compresses a single block using the algorithm-specific method
+    /// 
+    /// Compresses the provided block of data and appends the result
+    /// to the internal compressed data storage.
+    /// 
+    /// # Arguments
+    /// - `block`: The uncompressed data block to compress
+    /// 
+    /// # Returns
+    /// The number of bytes in the compressed block
     fn compress_block(&mut self, block: &[u8]) -> usize;
 
-    /// Decompresses a single block of data into the provided buffer.
+    /// Decompresses a single block into the provided buffer
+    ///
+    /// # Arguments
+    /// - `compressed_data`: The compressed block data
+    /// - `uncompressed_size`: Size of the decompressed data
+    /// - `buffer`: Output buffer for the decompressed data
     fn decompress_block(&self, compressed_data: &[u8], uncompressed_size: usize, buffer: &mut [u8]);
 
-    /// Decompresses a single block of data into the internal cache.
+    /// Decompresses a block to the internal cache for efficient repeated access
+    /// 
+    /// Decompresses the specified block and stores it in an internal cache
+    /// for efficient repeated access to items within the block. Implements
+    /// block-level caching to amortize decompression costs during sequential
+    /// or clustered random access patterns.
+    /// 
+    /// # Arguments
+    /// - `block_index`: Index of the block to decompress and cache
     fn decompress_block_to_cache(&mut self, block_index: usize);
 
-    /// Get the cache for the last decompressed block.
+    /// Provides access to the cached decompressed block data
+    /// 
+    /// Returns the cached decompressed data from the most recently accessed
+    /// block. Used for efficient item extraction after block decompression.
+    /// 
+    /// # Returns
+    /// Byte slice containing the cached decompressed block data
     fn get_block_cache(&self) -> &[u8];
 
-    /// Get the number of blocks.
+    /// Returns the total number of compressed blocks
+    /// 
+    /// # Returns
+    /// Total number of blocks in the compressed representation
     #[inline(always)]
     fn get_num_blocks(&self) -> usize {
         self.get_blocks_metadata().len()
     }
     
+    /// Default implementation of compression for block-based algorithms
+    /// 
+    /// Divides the input data into blocks and compresses each block independently.
+    /// Automatically handles block boundaries and maintains metadata for efficient
+    /// random access.
+    /// 
+    /// # Arguments
+    /// - `data`: Raw byte array containing concatenated strings
+    /// - `end_positions`: Boundary positions for individual strings (cumulative lengths)
     fn compress(&mut self, data: &[u8], end_positions: &[usize]) {
         // Copy end_positions to self.item_end_positions
         unsafe {
@@ -147,7 +243,16 @@ pub trait BlockCompressor: Compressor {
         }
     }
 
-    /// Decompress all blocks.
+    /// Decompresses all blocks to reconstruct the original dataset
+    /// 
+    /// Decompresses all blocks sequentially and concatenates the results into
+    /// the provided buffer.
+    /// 
+    /// # Arguments
+    /// - `buffer`: Pre-allocated output buffer for decompressed data
+    /// 
+    /// # Returns
+    /// Total number of bytes written to the output buffer
     fn decompress(&self, buffer: &mut [u8]) -> usize {
         let mut total_size = 0;
 
@@ -163,6 +268,18 @@ pub trait BlockCompressor: Compressor {
         total_size
     }
 
+    /// Retrieves a single string by index with optimized random access
+    /// 
+    /// Locates the block containing the requested string, decompresses only
+    /// that block (with caching), and extracts the specific string.
+    /// Implements block-level caching to amortize decompression costs.
+    ///
+    /// # Arguments
+    /// - `index`: Zero-based index of the string to retrieve
+    /// - `buffer`: Output buffer for the decompressed string
+    /// 
+    /// # Returns
+    /// Number of bytes written to the buffer
     #[inline(always)]
     fn get_item_at(&mut self, index: usize, buffer: &mut [u8]) -> usize {
         let block_index = self.get_block_index(index);
@@ -181,7 +298,16 @@ pub trait BlockCompressor: Compressor {
         item_size
     }
 
-    /// Returns the block index for a given item index.
+    /// Finds the block index containing the specified string
+    /// 
+    /// Uses binary search on cumulative item counts to efficiently locate
+    /// the target block for random access operations.
+    /// 
+    /// # Arguments
+    /// * `item_index` - Zero-based index of the target string
+    /// 
+    /// # Returns
+    /// Index of the block containing the string
     #[inline(always)]
     fn get_block_index(&self, item_index: usize) -> usize {        
         self.get_blocks_metadata()
@@ -195,7 +321,17 @@ pub trait BlockCompressor: Compressor {
             .unwrap_or_else(|idx| idx)
     }
 
-    /// Get the item delimiters (start and end offsets) in a block.
+    /// Calculates start and end positions of a string within its block
+    /// 
+    /// Translates global string positions to block-relative coordinates for
+    /// efficient extraction from decompressed block data.
+    ///
+    /// # Arguments
+    /// * `block_index` - Index of the block containing the string
+    /// * `item_index` - Global index of the target string
+    /// 
+    /// # Returns
+    /// Tuple of (start_offset, end_offset) within the block's decompressed data
     #[inline(always)]
     fn get_item_delimiters(&self, block_index: usize, item_index: usize) -> (usize, usize) {
         debug_assert!(block_index < self.get_num_blocks());
