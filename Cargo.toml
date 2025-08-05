@@ -16,5 +16,4 @@ bincode = "1.3.3"
 prettytable = "0.10"
 rustc-hash = "2.0.0"
 rand = "0.8.5"
-ptr_hash  = { git = "https://github.com/RagnarGrootKoerkamp/ptrhash", rev = "ba43481" }
-cacheline-ef = { git = "https://github.com/RagnarGrootKoerkamp/cacheline-ef" }
+onpair_rs = { git = "https://github.com/gargiulofrancesco/onpair_rs" }

@@ -8,7 +8,7 @@
 //! overhead in token-based compression schemes.
 
 use crate::bit_vector::BitVector;
-use crate::longest_prefix_matcher::lpm::LongestPrefixMatcher;
+use onpair_rs::lpm::LongestPrefixMatcher;
 use super::Compressor;
 use rustc_hash::FxHashMap;
 use rand::seq::SliceRandom;
@@ -110,7 +110,9 @@ impl Compressor for OnPairBVCompressor {
     }
 
     fn space_used_bytes(&self) -> usize {
-        (self.compressed_data.len() / 8) + self.dictionary.len() + (self.dictionary_end_positions.len() * std::mem::size_of::<u32>())
+        (self.compressed_data.len() / 8) 
+        + self.dictionary.len() 
+        + (self.dictionary_end_positions.len() * std::mem::size_of::<u32>())
     }
 
     fn name(&self) -> &str {
