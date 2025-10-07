@@ -16,13 +16,13 @@ use std::path::Path;
 use std::process::Command;
 
 /// Compression algorithms under evaluation
-const COMPRESSORS: [&str; 4] = ["raw", "onpair", "onpair16", "bpe"];
+const COMPRESSORS: [&str; 2] = ["onpair_mini", "onpair16_mini"];
 /// Path to individual benchmark executable
 const BENCHMARK_PATH: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/target/release/benchmark_individual");
 /// Output file for aggregated benchmark results
 const OUTPUT_FILE: &str = "benchmark_results.json";
 /// Number of iterations per algorithm-dataset combination for statistical robustness
-const N_ITERATIONS: usize = 15;
+const N_ITERATIONS: usize = 1;
 
 /// Main benchmark orchestrator
 /// 

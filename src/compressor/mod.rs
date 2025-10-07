@@ -9,6 +9,8 @@ pub mod bpe;
 pub mod onpair;
 pub mod onpair16;
 pub mod onpair_bv;
+pub mod onpair_mini;
+pub mod onpair16_mini;
 
 /// Core trait defining the compression algorithm interface
 /// 

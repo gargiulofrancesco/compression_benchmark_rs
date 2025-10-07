@@ -15,7 +15,9 @@ use compression_benchmark_rs::compressor::onpair_bv::OnPairBVCompressor;
 use compression_benchmark_rs::compressor::Compressor;
 use compression_benchmark_rs::compressor::raw::RawCompressor;
 use compression_benchmark_rs::compressor::onpair16::OnPair16Compressor;
+use compression_benchmark_rs::compressor::onpair16_mini::OnPair16MiniCompressor;
 use compression_benchmark_rs::compressor::onpair::OnPairCompressor;
+use compression_benchmark_rs::compressor::onpair_mini::OnPairMiniCompressor;
 use std::path::Path;
 use std::time::Instant;
 
@@ -29,6 +31,8 @@ enum CompressorEnum {
     OnPair(OnPairCompressor), 
     OnPair16(OnPair16Compressor),
     OnPairBV(OnPairBVCompressor),
+    OnPairMini(OnPairMiniCompressor),
+    OnPair16Mini(OnPair16MiniCompressor),
 }
 
 /// Individual benchmark execution entry point
@@ -83,6 +87,8 @@ fn main() {
         "onpair" => CompressorEnum::OnPair(OnPairCompressor::new(data.len(), end_positions.len()-1)),
         "onpair16" => CompressorEnum::OnPair16(OnPair16Compressor::new(data.len(), end_positions.len()-1)),
         "onpair_bv" => CompressorEnum::OnPairBV(OnPairBVCompressor::new(data.len(), end_positions.len()-1)),
+        "onpair_mini" => CompressorEnum::OnPairMini(OnPairMiniCompressor::new(data.len(), end_positions.len()-1)),
+        "onpair16_mini" => CompressorEnum::OnPair16Mini(OnPair16MiniCompressor::new(data.len(), end_positions.len()-1)),
         _ => {
             eprintln!("Unknown compressor: {}", compressor_name);
             std::process::exit(1);
@@ -95,6 +101,8 @@ fn main() {
         CompressorEnum::OnPair(ref mut c) => benchmark(c, dataset_name, &data, &end_positions, &queries),
         CompressorEnum::OnPair16(ref mut c) => benchmark(c, dataset_name, &data, &end_positions, &queries),
         CompressorEnum::OnPairBV(ref mut c) => benchmark(c, dataset_name, &data, &end_positions, &queries),
+        CompressorEnum::OnPairMini(ref mut c) => benchmark(c, dataset_name, &data, &end_positions, &queries),
+        CompressorEnum::OnPair16Mini(ref mut c) => benchmark(c, dataset_name, &data, &end_positions, &queries),
     };
 
     // Append the result to the file
