@@ -6,6 +6,8 @@
 
 pub mod raw;
 pub mod bpe;
+pub mod sampled_bpe;
+pub mod sampled_bpe16;
 pub mod onpair;
 pub mod onpair16;
 pub mod onpair_bv;

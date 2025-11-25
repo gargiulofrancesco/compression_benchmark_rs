@@ -62,7 +62,9 @@ This generates a comprehensive performance comparison across all algorithms and 
 | Algorithm | Description |
 |-----------|-------------|
 | `raw` | Uncompressed baseline |
-| `bpe` | Byte Pair Encoding |
+| `bpe` | Byte-Pair Encoding |
+| `sampled_bpe` | BPE on a sample + greedy parsing
+| `sampled_bpe16` | Sampled BPE (16-byte limit)
 | `onpair` | OnPair (unlimited tokens) |
 | `onpair_bv` | OnPair with bit vector |
 | `onpair16` | OnPair (16-byte limit) |

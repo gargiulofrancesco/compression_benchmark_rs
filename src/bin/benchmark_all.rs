@@ -16,7 +16,7 @@ use std::path::Path;
 use std::process::Command;
 
 /// Compression algorithms under evaluation
-const COMPRESSORS: [&str; 4] = ["raw", "onpair", "onpair16", "bpe"];
+const COMPRESSORS: [&str; 7] = ["raw", "onpair", "onpair16", "onpair_bv", "bpe", "sampled_bpe", "sampled_bpe16"];
 /// Path to individual benchmark executable
 const BENCHMARK_PATH: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/target/release/benchmark_individual");
 /// Output file for aggregated benchmark results
